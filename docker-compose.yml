@@ -1,0 +1,96 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    networks:
+      - gateway_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - ENV=${ENV:-production}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost}
+      - GATEWAY_MASTER_KEY=${GATEWAY_MASTER_KEY}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/llm_gateway}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES:-4194304}
+      - DEFAULT_RETENTION_DAYS=${DEFAULT_RETENTION_DAYS:-30}
+      - ALLOW_PRIVATE_PROVIDER_URLS=${ALLOW_PRIVATE_PROVIDER_URLS:-false}
+      - DEMO_MODE=${DEMO_MODE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gateway_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${PUBLIC_URL:-http://localhost}
+    depends_on:
+      - backend
+    networks:
+      - gateway_net
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: llm_gateway
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llm_gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gateway_net
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gateway_net
+
+networks:
+  gateway_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

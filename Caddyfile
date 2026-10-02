@@ -1,0 +1,41 @@
+{$DOMAIN:localhost} {
+    # Block internal and metrics endpoints from public proxy
+    @blocked {
+        path /metrics
+        path /metrics/*
+    }
+    respond @blocked "Forbidden" 403
+
+    # Security headers on all responses
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "same-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        # Content-Security-Policy: dashboard security
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';"
+    }
+
+    # Gateway API and Admin API routes -> Backend
+    handle /v1/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /admin/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /healthz {
+        reverse_proxy backend:8000
+    }
+
+    handle /readyz {
+        reverse_proxy backend:8000
+    }
+
+    # Frontend routes -> Next.js dashboard
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
