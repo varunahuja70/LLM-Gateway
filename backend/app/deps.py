@@ -1,14 +1,25 @@
-from datetime import timedelta
+import json
+from datetime import datetime, timedelta
+from typing import Any
 from urllib.parse import urlparse
 
+import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
-from app.core.security import constant_time_compare, hash_token
+from app.core.errors import GatewayAuthException
+from app.core.security import (
+    constant_time_compare,
+    hash_key,
+    hash_token,
+    is_valid_gateway_key_format,
+)
 from app.db.base import ensure_utc, utc_now
 from app.db.models.owner import OwnerUser, Session
+from app.db.models.project import GatewayKey, Project
 from app.db.session import get_db_session
 
 # Timeouts as specified in 03-security.md
@@ -125,3 +136,115 @@ async def require_csrf(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",
         )
+
+
+# In-memory gateway key auth cache (TTL 60s fallback when Redis is absent)
+_gateway_key_in_memory_cache: dict[str, tuple[dict[str, Any], datetime]] = {}
+
+
+def clear_gateway_key_memory_cache() -> None:
+    """Clear in-memory key cache for tests."""
+    _gateway_key_in_memory_cache.clear()
+
+
+async def invalidate_gateway_key_cache(key_hash: str) -> None:
+    """Invalidate cached key lookup immediately on revocation or rotation."""
+    _gateway_key_in_memory_cache.pop(key_hash, None)
+    settings = get_settings()
+    try:
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.delete(f"auth:key:{key_hash}")
+        await r.close()
+    except Exception:
+        pass
+
+
+async def require_gateway_key(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> tuple[Project, GatewayKey]:
+    """Authenticate incoming gateway request via Authorization: Bearer lgw_...
+
+    Validates key format, checks Redis 60s cache, loads key and project,
+    enforces active project, unrevoked key, and unexpired key.
+    Updates last_used_at at most once per minute.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header or not auth_header.strip().startswith("Bearer "):
+        raise GatewayAuthException(
+            "You didn't provide an API key. You need to provide your API key in an "
+            "Authorization header using Bearer auth."
+        )
+
+    raw_key = auth_header[7:].strip()
+    if not is_valid_gateway_key_format(raw_key):
+        raise GatewayAuthException("Incorrect API key provided.")
+
+    key_hash = hash_key(raw_key)
+    now = utc_now()
+
+    # 1. Check Redis cache
+    settings = get_settings()
+    cached_data: dict[str, Any] | None = None
+    try:
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        cached_str = await r.get(f"auth:key:{key_hash}")
+        await r.close()
+        if cached_str:
+            cached_data = json.loads(cached_str)
+    except Exception:
+        # Fall back to in-memory cache
+        if key_hash in _gateway_key_in_memory_cache:
+            entry, expire_time = _gateway_key_in_memory_cache[key_hash]
+            if now < expire_time:
+                cached_data = entry
+            else:
+                _gateway_key_in_memory_cache.pop(key_hash, None)
+
+    if cached_data and cached_data.get("revoked", False):
+        raise GatewayAuthException("API key has been revoked.")
+
+    # 2. Look up key and project in DB
+    stmt = (
+        select(GatewayKey)
+        .options(selectinload(GatewayKey.project))
+        .where(GatewayKey.key_hash == key_hash)
+    )
+    result = await db.execute(stmt)
+    key_record = result.scalar_one_or_none()
+
+    if not key_record:
+        raise GatewayAuthException("Incorrect API key provided.")
+
+    if key_record.revoked_at is not None:
+        raise GatewayAuthException("API key has been revoked.")
+
+    if key_record.expires_at is not None and ensure_utc(key_record.expires_at) < now:
+        raise GatewayAuthException("API key has expired.")
+
+    project = key_record.project
+    if not project or project.archived_at is not None:
+        raise GatewayAuthException("Project is archived or not found.")
+
+    # 3. Cache valid key lookup in Redis (60s TTL)
+    cache_payload = {
+        "key_id": str(key_record.id),
+        "project_id": str(project.id),
+        "project_slug": project.slug,
+        "revoked": False,
+    }
+    try:
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.set(f"auth:key:{key_hash}", json.dumps(cache_payload), ex=60)
+        await r.close()
+    except Exception:
+        _gateway_key_in_memory_cache[key_hash] = (cache_payload, now + timedelta(seconds=60))
+
+    # 4. Update last_used_at at most once per minute
+    if (
+        key_record.last_used_at is None
+        or (now - ensure_utc(key_record.last_used_at)).total_seconds() > 60
+    ):
+        key_record.last_used_at = now
+
+    return project, key_record

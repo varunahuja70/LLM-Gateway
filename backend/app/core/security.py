@@ -96,3 +96,18 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def is_valid_gateway_key_format(key: str) -> bool:
+    """Verify gateway key matches format lgw_ + base64url characters."""
+    if not key or not isinstance(key, str):
+        return False
+    if not key.startswith("lgw_"):
+        return False
+    # Format is lgw_ + 43 URL-safe chars (length approx 47, allow 40-100)
+    suffix = key[4:]
+    if len(suffix) < 30 or len(suffix) > 100:
+        return False
+    # Check valid urlsafe base64 characters
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+    return all(c in allowed for c in suffix)
