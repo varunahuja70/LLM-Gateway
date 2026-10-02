@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.admin.alerts import router as alerts_router
 from app.api.admin.auth import router as auth_router
 from app.api.admin.health import router as health_router
 from app.api.admin.keys import router as keys_router
@@ -16,6 +17,7 @@ from app.api.gateway.models import router as models_router
 from app.config import get_settings
 from app.core.errors import GatewayAPIException
 from app.services.request_logger import request_logger
+from app.workers.scheduler import start_scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -28,6 +30,10 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
     # Start background request logger worker
     request_logger.start()
+
+    # Start background scheduler if not in test mode
+    if settings.ENV != "test":
+        start_scheduler()
 
     # Auto-seed default model prices on first startup if table is empty
     try:
@@ -48,6 +54,8 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     try:
         yield
     finally:
+        if settings.ENV != "test":
+            stop_scheduler()
         await request_logger.stop()
 
 
@@ -98,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(keys_router)
     app.include_router(providers_router)
     app.include_router(prices_router)
+    app.include_router(alerts_router)
 
     # Gateway API routes
     app.include_router(chat_router)

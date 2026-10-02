@@ -9,7 +9,9 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.budget import check_budget_block
 from app.core.errors import GatewayAPIException
+from app.core.rate_limit import check_rate_limit
 from app.core.routing import resolve_model, resolve_provider_credentials
 from app.db.base import utc_now, uuid7
 from app.db.models.project import GatewayKey, Project
@@ -114,6 +116,61 @@ async def chat_completions(
         "X-Gateway-Fallback": "none",
     }
 
+    # 4a. Rate limit check (sliding window)
+    rpm_limit = project.config.rpm_limit if project.config else 60
+    allowed, rate_retry = await check_rate_limit(project.id, limit_rpm=rpm_limit)
+    if not allowed:
+        log_item = RequestLogItem(
+            id=req_id,
+            project_id=project.id,
+            gateway_key_id=gateway_key.id,
+            created_at=req_time,
+            endpoint="chat",
+            provider=provider,
+            model_requested=payload.model or model_used,
+            model_used=model_used,
+            status="rate_limited",
+            http_status=429,
+            error_type="requests",
+            error_message=f"Rate limit exceeded. Please retry after {rate_retry} seconds.",
+            user_tag=user_tag,
+        )
+        request_logger.log(log_item)
+        raise GatewayAPIException(
+            status_code=429,
+            message=f"Rate limit exceeded. Please retry after {rate_retry} seconds.",
+            error_type="requests",
+            code="rate_limit_exceeded",
+            headers={"Retry-After": str(rate_retry), **response_headers},
+        )
+
+    # 4b. Budget block check
+    is_blocked, budget_retry, period_name = await check_budget_block(project.id, project.config)
+    if is_blocked:
+        log_item = RequestLogItem(
+            id=req_id,
+            project_id=project.id,
+            gateway_key_id=gateway_key.id,
+            created_at=req_time,
+            endpoint="chat",
+            provider=provider,
+            model_requested=payload.model or model_used,
+            model_used=model_used,
+            status="blocked",
+            http_status=429,
+            error_type="budget_exceeded",
+            error_message=f"Project {period_name} budget exceeded.",
+            user_tag=user_tag,
+        )
+        request_logger.log(log_item)
+        raise GatewayAPIException(
+            status_code=429,
+            message=f"Project {period_name} budget exceeded.",
+            error_type="budget_exceeded",
+            code="budget_exceeded",
+            headers={"Retry-After": str(budget_retry), **response_headers},
+        )
+
     # 5. Resolve provider credentials
     cred_map = project.config.provider_credential_id if project.config else None
     api_key, base_url = await resolve_provider_credentials(cred_map, provider, db)
@@ -214,6 +271,7 @@ async def chat_completions(
                 request_json=raw_request_dict if log_content_enabled else None,
                 response_json=response_data if log_content_enabled else None,
                 output_content=output_content,
+                config=project.config,
             )
             request_logger.log(log_item)
 
@@ -373,6 +431,7 @@ async def chat_completions(
                 request_json=raw_request_dict if log_content_enabled else None,
                 response_json={"content": full_output} if log_content_enabled else None,
                 output_content=full_output,
+                config=project.config,
             )
             request_logger.log(log_item)
 

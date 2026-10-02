@@ -176,13 +176,20 @@ async def require_gateway_key(
     Updates last_used_at at most once per minute.
     """
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header or not auth_header.strip().startswith("Bearer "):
+    if not auth_header:
         raise GatewayAuthException(
             "You didn't provide an API key. You need to provide your API key in an "
             "Authorization header using Bearer auth."
         )
 
-    raw_key = auth_header[7:].strip()
+    stripped = auth_header.strip()
+    if not stripped.lower().startswith("bearer "):
+        raise GatewayAuthException(
+            "You didn't provide an API key. You need to provide your API key in an "
+            "Authorization header using Bearer auth."
+        )
+
+    raw_key = stripped[7:].strip()
     if not is_valid_gateway_key_format(raw_key):
         raise GatewayAuthException("Incorrect API key provided.")
 

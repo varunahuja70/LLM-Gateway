@@ -8,11 +8,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.budget import record_spend_and_check_alerts
 from app.core.pricing import calculate_cost, get_price_for_model
 from app.db.models.provider import ModelPrice
 from app.db.models.request import RequestContent, RequestLog
 from app.db.session import get_sessionmaker
 from app.logging_setup import redact_string
+from app.services.webhook import deliver_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ class RequestLogItem:
     request_json: dict[str, Any] | None = None
     response_json: dict[str, Any] | None = None
     output_content: str | None = None
+    config: Any | None = None
 
 
 class RequestLoggerService:
@@ -150,6 +153,37 @@ class RequestLoggerService:
                         cached_input_tokens=item.cached_input_tokens,
                         price=price_record,
                     )
+
+                    # Record spend in budget counters and trigger alerts if thresholds crossed
+                    if cost and cost > 0 and item.config:
+                        try:
+                            alerts = await record_spend_and_check_alerts(
+                                item.project_id, cost, item.config, session
+                            )
+                            for alert in alerts:
+                                if item.config.webhook_url:
+                                    payload = {
+                                        "event": "budget_alert",
+                                        "alert_id": str(alert.id),
+                                        "project_id": str(alert.project_id),
+                                        "period": alert.period,
+                                        "threshold_percent": alert.threshold_percent,
+                                        "spend_micro_usd": alert.spend_micro_usd,
+                                        "budget_micro_usd": alert.budget_micro_usd,
+                                        "timestamp": alert.created_at.isoformat(),
+                                    }
+                                    asyncio.create_task(
+                                        deliver_webhook(
+                                            alert.id,
+                                            alert.project_id,
+                                            item.config.webhook_url,
+                                            item.config.webhook_secret_encrypted,
+                                            payload,
+                                            session_factory=session_factory,
+                                        )
+                                    )
+                        except Exception as alert_err:
+                            logger.warning("Error checking budget alerts: %s", alert_err)
 
                     # Compute quality signal: empty_or_truncated
                     is_empty_or_truncated = (item.finish_reason == "length") or (
