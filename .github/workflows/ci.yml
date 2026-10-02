@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    name: Backend Lint, Type Check & Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: llm_gateway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        env:
+          REDIS_PASSWORD: redispassword
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          uv sync --all-groups
+
+      - name: Lint with Ruff
+        run: |
+          cd backend
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check with Mypy
+        run: |
+          cd backend
+          uv run mypy app tests
+
+      - name: Security audit with pip-audit
+        run: |
+          cd backend
+          uv run pip-audit
+
+      - name: Run Pytest
+        env:
+          GATEWAY_MASTER_KEY: dGVzdF9tYXN0ZXJfa2V5XzMyX2J5dGVzX3N0cmluZw==
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/llm_gateway
+          REDIS_URL: redis://:redispassword@localhost:6379/0
+          ENV: test
+        run: |
+          cd backend
+          uv run pytest
+
+  frontend:
+    name: Frontend Lint, Type Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+
+      - name: Lint with ESLint
+        run: |
+          cd frontend
+          pnpm run lint
+
+      - name: Type check with tsc
+        run: |
+          cd frontend
+          pnpm exec tsc --noEmit
+
+      - name: Run Vitest
+        run: |
+          cd frontend
+          pnpm run test:run
+
+      - name: Audit frontend packages
+        run: |
+          cd frontend
+          pnpm audit --audit-level=high || true
+
+  security:
+    name: Secret Scanner (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

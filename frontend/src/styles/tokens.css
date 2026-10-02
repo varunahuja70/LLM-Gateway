@@ -1,0 +1,62 @@
+@layer base {
+  :root {
+    --background: #FFFFFF;
+    --surface: #FAFAFA;
+    --surface-raised: #FFFFFF;
+    --border: #E7E7EA;
+    --text: #0B0B0C;
+    --text-muted: #6B6B73;
+    --accent: #4F46E5;
+    --accent-hover: #4338CA;
+    --success: #16A34A;
+    --warning: #D97706;
+    --danger: #DC2626;
+
+    /* Shadcn compatible mappings */
+    --card: var(--surface);
+    --card-foreground: var(--text);
+    --popover: var(--surface-raised);
+    --popover-foreground: var(--text);
+    --primary: var(--accent);
+    --primary-foreground: #FFFFFF;
+    --secondary: #F3F3F5;
+    --secondary-foreground: var(--text);
+    --muted: #F3F3F5;
+    --muted-foreground: var(--text-muted);
+    --destructive: var(--danger);
+    --destructive-foreground: #FFFFFF;
+    --input: var(--border);
+    --ring: var(--accent);
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: #0A0A0B;
+    --surface: #111113;
+    --surface-raised: #17171A;
+    --border: #26262B;
+    --text: #EDEDEF;
+    --text-muted: #8B8B93;
+    --accent: #6E6AFF;
+    --accent-hover: #5D58FA;
+    --success: #3DD68C;
+    --warning: #F5A524;
+    --danger: #F5555D;
+
+    /* Shadcn compatible mappings */
+    --card: var(--surface);
+    --card-foreground: var(--text);
+    --popover: var(--surface-raised);
+    --popover-foreground: var(--text);
+    --primary: var(--accent);
+    --primary-foreground: #FFFFFF;
+    --secondary: #1F1F24;
+    --secondary-foreground: var(--text);
+    --muted: #1F1F24;
+    --muted-foreground: var(--text-muted);
+    --destructive: var(--danger);
+    --destructive-foreground: #FFFFFF;
+    --input: var(--border);
+    --ring: var(--accent);
+  }
+}
