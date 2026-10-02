@@ -59,6 +59,7 @@ select = [
 ]
 ignore = [
     "B008", # do not perform function call in argument defaults (standard for FastAPI Depends)
+    "E501", # line-too-long handled by ruff format
 ]
 
 [tool.mypy]

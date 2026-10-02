@@ -151,12 +151,18 @@ async def invalidate_gateway_key_cache(key_hash: str) -> None:
     """Invalidate cached key lookup immediately on revocation or rotation."""
     _gateway_key_in_memory_cache.pop(key_hash, None)
     settings = get_settings()
-    try:
-        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        await r.delete(f"auth:key:{key_hash}")
-        await r.close()
-    except Exception:
-        pass
+    if settings.ENV != "test":
+        try:
+            r = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=0.1,
+                socket_timeout=0.1,
+            )
+            await r.delete(f"auth:key:{key_hash}")
+            await r.close()
+        except Exception:
+            pass
 
 
 async def require_gateway_key(
@@ -186,20 +192,28 @@ async def require_gateway_key(
     # 1. Check Redis cache
     settings = get_settings()
     cached_data: dict[str, Any] | None = None
-    try:
-        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        cached_str = await r.get(f"auth:key:{key_hash}")
-        await r.close()
-        if cached_str:
-            cached_data = json.loads(cached_str)
-    except Exception:
+    if settings.ENV != "test":
+        try:
+            r = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=0.1,
+                socket_timeout=0.1,
+            )
+            cached_str = await r.get(f"auth:key:{key_hash}")
+            await r.close()
+            if cached_str:
+                cached_data = json.loads(cached_str)
+        except Exception:
+            pass
+
+    if cached_data is None and key_hash in _gateway_key_in_memory_cache:
         # Fall back to in-memory cache
-        if key_hash in _gateway_key_in_memory_cache:
-            entry, expire_time = _gateway_key_in_memory_cache[key_hash]
-            if now < expire_time:
-                cached_data = entry
-            else:
-                _gateway_key_in_memory_cache.pop(key_hash, None)
+        entry, expire_time = _gateway_key_in_memory_cache[key_hash]
+        if now < expire_time:
+            cached_data = entry
+        else:
+            _gateway_key_in_memory_cache.pop(key_hash, None)
 
     if cached_data and cached_data.get("revoked", False):
         raise GatewayAuthException("API key has been revoked.")
@@ -233,11 +247,19 @@ async def require_gateway_key(
         "project_slug": project.slug,
         "revoked": False,
     }
-    try:
-        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        await r.set(f"auth:key:{key_hash}", json.dumps(cache_payload), ex=60)
-        await r.close()
-    except Exception:
+    if settings.ENV != "test":
+        try:
+            r = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=0.1,
+                socket_timeout=0.1,
+            )
+            await r.set(f"auth:key:{key_hash}", json.dumps(cache_payload), ex=60)
+            await r.close()
+        except Exception:
+            _gateway_key_in_memory_cache[key_hash] = (cache_payload, now + timedelta(seconds=60))
+    else:
         _gateway_key_in_memory_cache[key_hash] = (cache_payload, now + timedelta(seconds=60))
 
     # 4. Update last_used_at at most once per minute

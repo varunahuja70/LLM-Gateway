@@ -48,22 +48,30 @@ async def _check_and_increment_rate_limit(
     Returns True if allowed, False if blocked.
     """
     settings = get_settings()
-    try:
-        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        count = await r.incr(key)
-        if count == 1:
-            await r.expire(key, window_seconds)
-        await r.close()
-        return count <= max_attempts
-    except Exception:
-        # Fallback to local memory
-        now = datetime.now(UTC)
-        timestamps = _in_memory_rate_limit.get(key, [])
-        cutoff = now - timedelta(seconds=window_seconds)
-        valid_timestamps = [t for t in timestamps if t > cutoff]
-        valid_timestamps.append(now)
-        _in_memory_rate_limit[key] = valid_timestamps
-        return len(valid_timestamps) <= max_attempts
+    if settings.ENV != "test":
+        try:
+            r = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=0.1,
+                socket_timeout=0.1,
+            )
+            count = await r.incr(key)
+            if count == 1:
+                await r.expire(key, window_seconds)
+            await r.close()
+            return count <= max_attempts
+        except Exception:
+            pass
+
+    # Fallback to local memory
+    now = datetime.now(UTC)
+    timestamps = _in_memory_rate_limit.get(key, [])
+    cutoff = now - timedelta(seconds=window_seconds)
+    valid_timestamps = [t for t in timestamps if t > cutoff]
+    valid_timestamps.append(now)
+    _in_memory_rate_limit[key] = valid_timestamps
+    return len(valid_timestamps) <= max_attempts
 
 
 async def _reset_rate_limit(key: str) -> None:
