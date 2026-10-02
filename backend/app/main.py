@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.admin.auth import router as auth_router
@@ -10,8 +11,11 @@ from app.api.admin.keys import router as keys_router
 from app.api.admin.prices import router as prices_router
 from app.api.admin.projects import router as projects_router
 from app.api.admin.providers import router as providers_router
+from app.api.gateway.chat import router as chat_router
+from app.api.gateway.models import router as models_router
 from app.config import get_settings
 from app.core.errors import GatewayAPIException
+from app.services.request_logger import request_logger
 
 
 @asynccontextmanager
@@ -21,6 +25,9 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     # Explicit check for master key
     if not settings.GATEWAY_MASTER_KEY:
         raise RuntimeError("Startup aborted: GATEWAY_MASTER_KEY is required.")
+
+    # Start background request logger worker
+    request_logger.start()
 
     # Auto-seed default model prices on first startup if table is empty
     try:
@@ -38,7 +45,10 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     except Exception:
         pass
 
-    yield
+    try:
+        yield
+    finally:
+        await request_logger.stop()
 
 
 def create_app() -> FastAPI:
@@ -61,6 +71,26 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(status_code=exc.status_code, content=exc.detail, headers=exc.headers)
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        if request.url.path.startswith("/v1"):
+            err_msg = "; ".join(
+                f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in exc.errors()
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "message": err_msg,
+                        "type": "invalid_request_error",
+                        "code": "invalid_parameter",
+                    }
+                },
+            )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
     # Health and readiness routes
     app.include_router(health_router)
     app.include_router(auth_router)
@@ -68,6 +98,10 @@ def create_app() -> FastAPI:
     app.include_router(keys_router)
     app.include_router(providers_router)
     app.include_router(prices_router)
+
+    # Gateway API routes
+    app.include_router(chat_router)
+    app.include_router(models_router)
 
     return app
 

@@ -33,6 +33,7 @@ Tooling: `uv` package manager. Installed and verified with Python 3.13 / 3.14.
 | respx | 0.23.1 | `uv add --dev respx` | Mocking httpx provider calls |
 | coverage | 7.16.2 | `uv add --dev coverage` | Test coverage reporting |
 | aiosqlite | 0.22.1 | `uv add --dev aiosqlite` | Async SQLite driver for isolated local/unit testing |
+| openai | 3.24.0 | `uv add --dev openai` | Official OpenAI Python SDK compatibility tests |
 | pip-audit | 2.10.1 | `uv add --dev pip-audit` | Dependency vulnerability auditing |
 
 ## Frontend (Node / TypeScript)

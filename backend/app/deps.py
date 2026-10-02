@@ -221,7 +221,7 @@ async def require_gateway_key(
     # 2. Look up key and project in DB
     stmt = (
         select(GatewayKey)
-        .options(selectinload(GatewayKey.project))
+        .options(selectinload(GatewayKey.project).selectinload(Project.config))
         .where(GatewayKey.key_hash == key_hash)
     )
     result = await db.execute(stmt)
