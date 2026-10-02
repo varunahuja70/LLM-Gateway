@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.admin.auth import router as auth_router
 from app.api.admin.health import router as health_router
 from app.config import get_settings
 
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
 
     # Health and readiness routes
     app.include_router(health_router)
+    app.include_router(auth_router)
 
     return app
 

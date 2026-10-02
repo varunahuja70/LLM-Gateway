@@ -13,6 +13,7 @@ Tooling: `uv` package manager. Installed and verified with Python 3.13 / 3.14.
 | fastapi | 0.142.2 | `uv add fastapi` | Web framework, OpenAPI support |
 | uvicorn | 0.54.0 | `uv add "uvicorn[standard]"` | ASGI server |
 | pydantic | 2.13.5 | `uv add pydantic` | Data validation |
+| email-validator | 2.3.0 | `uv add "pydantic[email]"` | Email validation for Pydantic models |
 | pydantic-settings | 2.15.0 | `uv add pydantic-settings` | Typed configuration |
 | sqlalchemy | 2.0.54 | `uv add "sqlalchemy>=2.0.0,<2.1.0"` | Async ORM (pinned to 2.0.x; not 2.1 beta) |
 | asyncpg | 0.31.0 | `uv add asyncpg` | PostgreSQL async driver |

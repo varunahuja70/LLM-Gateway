@@ -21,5 +21,12 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime has UTC timezone."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 class Base(DeclarativeBase):
     pass

@@ -13,7 +13,7 @@ dependencies = [
     "fastapi>=0.142.2",
     "httpx[http2]>=0.28.1",
     "prometheus-client>=0.26.0",
-    "pydantic>=2.13.5",
+    "pydantic[email]>=2.13.5",
     "pydantic-settings>=2.15.0",
     "redis>=8.1.0",
     "sqlalchemy>=2.0.0,<2.1.0",
@@ -57,7 +57,9 @@ select = [
     "ARG", # flake8-unused-arguments
     "SIM", # flake8-simplify
 ]
-ignore = []
+ignore = [
+    "B008", # do not perform function call in argument defaults (standard for FastAPI Depends)
+]
 
 [tool.mypy]
 python_version = "3.13"
