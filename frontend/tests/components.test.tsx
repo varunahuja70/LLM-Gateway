@@ -4,6 +4,7 @@ import { CodeSnippet } from "../src/components/shared/CodeSnippet";
 import { EmptyState } from "../src/components/shared/EmptyState";
 import { ErrorState } from "../src/components/shared/ErrorState";
 import { KpiCard } from "../src/components/shared/KpiCard";
+import { BudgetBar } from "../src/components/shared/BudgetBar";
 
 describe("Foundation Components", () => {
   describe("KpiCard", () => {
@@ -73,6 +74,25 @@ describe("Foundation Components", () => {
     it("renders code snippet text", () => {
       render(<CodeSnippet code='curl -X POST https://example.com' language="bash" />);
       expect(screen.getByText(/curl -X POST https:\/\/example.com/)).toBeDefined();
+    });
+  });
+
+  describe("BudgetBar", () => {
+    it("renders unconstrained bar when no budget is set", () => {
+      render(<BudgetBar spentMicroUsd={500_000} budgetMicroUsd={null} />);
+      expect(screen.getByText("No limit set")).toBeDefined();
+      expect(screen.getByText(/Spend:\s*\$0\.5/)).toBeDefined();
+    });
+
+    it("renders percentage and limit when budget is set", () => {
+      render(
+        <BudgetBar
+          spentMicroUsd={850_000_000}
+          budgetMicroUsd={1_000_000_000}
+        />
+      );
+      expect(screen.getByText(/\$850.00 of \$1,000.00/)).toBeDefined();
+      expect(screen.getByText("85.0%")).toBeDefined();
     });
   });
 });
