@@ -85,6 +85,21 @@ async def reconcile_budget_counters(
         logger.exception("Budget reconciliation error: %s", e)
 
 
+async def run_retention_cleanup(
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
+    """Nightly job to enforce data retention policy by purging expired request logs and content."""
+    from app.services.retention import enforce_retention
+
+    maker = session_factory or get_sessionmaker()
+    try:
+        async with maker() as session:
+            deleted = await enforce_retention(session)
+            logger.info("Nightly retention cleanup completed: purged %d request logs.", deleted)
+    except Exception as e:
+        logger.exception("Retention cleanup error: %s", e)
+
+
 def start_scheduler() -> AsyncIOScheduler:
     """Start APScheduler with background maintenance jobs."""
     global _scheduler
@@ -98,6 +113,15 @@ def start_scheduler() -> AsyncIOScheduler:
         "interval",
         minutes=15,
         id="budget_reconcile",
+        replace_existing=True,
+    )
+    # Nightly data retention cleanup at 02:00 UTC
+    _scheduler.add_job(
+        run_retention_cleanup,
+        "cron",
+        hour=2,
+        minute=0,
+        id="retention_cleanup",
         replace_existing=True,
     )
     _scheduler.start()

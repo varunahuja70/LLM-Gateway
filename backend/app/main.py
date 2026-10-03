@@ -12,6 +12,8 @@ from app.api.admin.keys import router as keys_router
 from app.api.admin.prices import router as prices_router
 from app.api.admin.projects import router as projects_router
 from app.api.admin.providers import router as providers_router
+from app.api.admin.requests import router as requests_router
+from app.api.admin.stats import router as stats_router
 from app.api.gateway.chat import router as chat_router
 from app.api.gateway.embeddings import router as embeddings_router
 from app.api.gateway.feedback import router as feedback_router
@@ -109,6 +111,8 @@ def create_app() -> FastAPI:
     app.include_router(providers_router)
     app.include_router(prices_router)
     app.include_router(alerts_router)
+    app.include_router(requests_router)
+    app.include_router(stats_router)
 
     # Gateway API routes
     app.include_router(chat_router)

@@ -29,6 +29,7 @@ class RequestLog(Base):
         Index("ix_request_log_created_at", "created_at"),
         Index("ix_request_log_model_created", "model_used", "created_at"),
         Index("ix_request_log_status_created", "status", "created_at"),
+        Index("ix_request_log_provider_created", "provider", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)

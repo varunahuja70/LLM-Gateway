@@ -254,6 +254,58 @@ async def archive_project(
     return MessageResponse(message="Project archived successfully.")
 
 
+@router.delete(
+    "/{project_id}/data",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_csrf)],
+)
+async def delete_all_project_data(
+    project_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    owner_auth: tuple[OwnerUser, Session] = Depends(require_owner),
+) -> Any:
+    """Delete all request logs, content, and alerts for a project."""
+    owner, _ = owner_auth
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    settings = get_settings()
+    redis_client = None
+    if settings.ENV != "test":
+        try:
+            import redis.asyncio as aioredis
+
+            redis_client = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=0.2,
+                socket_timeout=0.2,
+            )
+        except Exception:
+            redis_client = None
+
+    from app.services.retention import delete_project_data
+
+    deleted_count = await delete_project_data(db, project_id, redis_client=redis_client)
+    if redis_client is not None:
+        await redis_client.close()
+
+    await log_audit_event(
+        db,
+        action="project_data_deleted",
+        actor_type="owner",
+        actor_id=owner.id,
+        details={"project_id": str(project_id), "deleted_records": deleted_count},
+    )
+
+    return MessageResponse(
+        message=f"Successfully deleted {deleted_count} request records for project."
+    )
+
+
 @router.get("/{project_id}/config", response_model=ProjectConfigResponse)
 async def get_project_config(
     project_id: uuid.UUID,
