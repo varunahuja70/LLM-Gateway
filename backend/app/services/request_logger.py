@@ -154,8 +154,14 @@ class RequestLoggerService:
                         price=price_record,
                     )
 
+                    saved_micro_usd = item.saved_micro_usd
+                    if item.cache_hit:
+                        if saved_micro_usd == 0 and cost is not None:
+                            saved_micro_usd = cost
+                        cost = 0
+
                     # Record spend in budget counters and trigger alerts if thresholds crossed
-                    if cost and cost > 0 and item.config:
+                    if not item.cache_hit and cost and cost > 0 and item.config:
                         try:
                             alerts = await record_spend_and_check_alerts(
                                 item.project_id, cost, item.config, session
@@ -206,12 +212,12 @@ class RequestLoggerService:
                         http_status=item.http_status,
                         error_type=item.error_type,
                         error_message_safe=safe_error,
-                        input_tokens=item.input_tokens,
-                        output_tokens=item.output_tokens,
-                        cached_input_tokens=item.cached_input_tokens,
+                        input_tokens=0 if item.cache_hit else item.input_tokens,
+                        output_tokens=0 if item.cache_hit else item.output_tokens,
+                        cached_input_tokens=0 if item.cache_hit else item.cached_input_tokens,
                         usage_estimated=item.usage_estimated,
                         cost_micro_usd=cost,
-                        saved_micro_usd=item.saved_micro_usd,
+                        saved_micro_usd=saved_micro_usd,
                         latency_ms=item.latency_ms,
                         ttft_ms=item.ttft_ms,
                         streamed=item.streamed,

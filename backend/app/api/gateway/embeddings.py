@@ -8,6 +8,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.budget import get_spend_counters
+from app.core.cache import (
+    compute_embedding_cache_key,
+    get_cached_response,
+    set_cached_response,
+)
 from app.core.errors import GatewayAPIException
 from app.core.fallback import build_fallback_chain, is_fallback_trigger
 from app.core.rate_limit import check_rate_limit
@@ -203,6 +208,51 @@ async def create_embeddings(
     request_hash = hashlib.sha256(request_canonical.encode("utf-8")).digest()
     log_content_enabled = bool(project.config and project.config.log_content)
 
+    # 6b. Cache check
+    cache_enabled = bool(project.config and project.config.cache_enabled)
+    cache_ttl_s = project.config.cache_ttl_s if project.config else 3600
+    cache_key = compute_embedding_cache_key(project.id, primary_model_used, raw_request_dict)
+
+    if cache_enabled and cache_status != "bypass":
+        cached_data = await get_cached_response(project.id, cache_key)
+        if cached_data is not None:
+            hit_headers = {
+                "X-Gateway-Request-Id": str(req_id),
+                "X-Gateway-Cache": "hit",
+                "X-Gateway-Model-Used": primary_model_used,
+                "X-Gateway-Fallback": "none",
+            }
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            usage_dict = cached_data.get("usage", {})
+            input_tokens = usage_dict.get("prompt_tokens", 0)
+
+            log_item = RequestLogItem(
+                id=req_id,
+                project_id=project.id,
+                gateway_key_id=gateway_key.id,
+                created_at=req_time,
+                endpoint="embeddings",
+                provider=primary_provider,
+                model_requested=payload.model or primary_model_used,
+                model_used=primary_model_used,
+                status="ok",
+                http_status=200,
+                input_tokens=input_tokens,
+                output_tokens=0,
+                cached_input_tokens=0,
+                latency_ms=latency_ms,
+                streamed=False,
+                cache_hit=True,
+                user_tag=user_tag,
+                request_hash=request_hash,
+                log_content=log_content_enabled,
+                request_json=raw_request_dict if log_content_enabled else None,
+                response_json=cached_data if log_content_enabled else None,
+                config=project.config,
+            )
+            request_logger.log(log_item)
+            return JSONResponse(content=cached_data, status_code=200, headers=hit_headers)
+
     fallback_used = False
     fallback_from: str | None = None
     fallback_reason: str | None = None
@@ -340,6 +390,9 @@ async def create_embeddings(
         config=project.config,
     )
     request_logger.log(log_item)
+
+    if cache_enabled and cache_status != "bypass":
+        await set_cached_response(project.id, cache_key, response_data, ttl_seconds=cache_ttl_s)
 
     return JSONResponse(
         content=response_data,
