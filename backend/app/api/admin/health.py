@@ -34,11 +34,11 @@ async def readyz(response: Response) -> dict[str, str]:
         is_ready = False
 
     # Check Redis
+    r: aioredis.Redis[str] | None = None
     try:
-        r: aioredis.Redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         ping_call = cast(Callable[[], Awaitable[bool]], r.ping)
         pong = await ping_call()
-        await r.close()
         if pong:
             checks["redis"] = "ok"
         else:
@@ -47,6 +47,9 @@ async def readyz(response: Response) -> dict[str, str]:
     except Exception as e:
         checks["redis"] = f"error: {e}"
         is_ready = False
+    finally:
+        if r is not None:
+            await r.close()
 
     if not is_ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

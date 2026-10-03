@@ -12,7 +12,7 @@ from app.config import get_settings
 
 # types-redis does not annotate parameters of Redis.eval. We define a typed wrapper.
 async def _eval_lua_script(
-    client: aioredis.Redis,
+    client: aioredis.Redis[str],
     script: str,
     numkeys: int,
     *args: Any,
@@ -76,8 +76,9 @@ async def check_rate_limit(
     settings = get_settings()
 
     if settings.ENV != "test":
+        r: aioredis.Redis[str] | None = None
         try:
-            r: aioredis.Redis = aioredis.from_url(
+            r = aioredis.from_url(
                 settings.REDIS_URL,
                 decode_responses=True,
                 socket_connect_timeout=0.1,
@@ -86,13 +87,15 @@ async def check_rate_limit(
             res: Any = await _eval_lua_script(
                 r, SLIDING_WINDOW_LUA, 1, key, now, window_seconds, limit_rpm
             )
-            await r.close()
             if isinstance(res, list) and len(res) >= 2:
                 allowed = bool(res[0] == 1)
                 retry_after = int(res[1])
                 return allowed, retry_after
         except Exception:
             pass
+        finally:
+            if r is not None:
+                await r.close()
 
     # In-memory sliding window with concurrency lock
     async with _rate_limit_lock:
