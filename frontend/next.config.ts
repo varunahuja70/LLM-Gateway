@@ -36,6 +36,23 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000";
+    return [
+      {
+        source: "/admin/:path*",
+        destination: `${backendUrl}/admin/:path*`,
+      },
+      {
+        source: "/v1/:path*",
+        destination: `${backendUrl}/v1/:path*`,
+      },
+      {
+        source: "/healthz",
+        destination: `${backendUrl}/healthz`,
+      },
+    ];
+  },
   async headers() {
     return [
       {
