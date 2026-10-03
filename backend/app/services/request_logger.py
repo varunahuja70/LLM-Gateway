@@ -67,6 +67,53 @@ class RequestLoggerService:
         """Add request log entry to the in-memory queue. Non-blocking."""
         self._queue.put_nowait(item)
 
+        # Update Prometheus metrics
+        try:
+            from app.core.metrics import (
+                BUDGET_BLOCKS_TOTAL,
+                CACHE_HITS_TOTAL,
+                PROVIDER_ERRORS_TOTAL,
+                REQUEST_DURATION_SECONDS,
+                REQUESTS_TOTAL,
+            )
+
+            REQUESTS_TOTAL.labels(
+                endpoint=item.endpoint,
+                provider=item.provider,
+                model=item.model_used,
+                status=item.status,
+            ).inc()
+
+            if item.latency_ms > 0:
+                REQUEST_DURATION_SECONDS.labels(
+                    endpoint=item.endpoint,
+                    model=item.model_used,
+                ).observe(item.latency_ms / 1000.0)
+
+            if item.cache_hit:
+                CACHE_HITS_TOTAL.labels(
+                    endpoint=item.endpoint,
+                    model=item.model_used,
+                ).inc()
+
+            if item.status == "error" and item.error_type:
+                PROVIDER_ERRORS_TOTAL.labels(
+                    provider=item.provider,
+                    error_type=item.error_type,
+                ).inc()
+
+            if item.status == "blocked" and item.error_type == "budget_exceeded":
+                BUDGET_BLOCKS_TOTAL.labels(
+                    project_id=str(item.project_id),
+                    period="limit",
+                ).inc()
+        except Exception:
+            pass
+
+    def queue_size(self) -> int:
+        """Return the current number of items waiting in the log queue."""
+        return self._queue.qsize()
+
     def start(self, session_factory: async_sessionmaker[AsyncSession] | None = None) -> None:
         """Start the background worker if not already running."""
         if self._worker_task is not None and not self._worker_task.done():

@@ -51,3 +51,12 @@ async def readyz(response: Response) -> dict[str, str]:
         checks["status"] = "ok"
 
     return checks
+
+
+@router.get("/metrics")
+async def metrics() -> Response:
+    """Internal Prometheus metrics endpoint."""
+    from app.core.metrics import get_metrics_output
+
+    content, media_type = get_metrics_output()
+    return Response(content=content, media_type=media_type)
