@@ -16,7 +16,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isStatusLoading && setupStatus && !setupStatus.setup_completed) {
+    const isSetup = Boolean(setupStatus?.is_setup ?? setupStatus?.setup_completed);
+    if (!isStatusLoading && setupStatus && !isSetup) {
       router.replace("/setup");
       return;
     }

@@ -16,7 +16,8 @@ export default function SetupPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isStatusLoading && setupStatus?.setup_completed) {
+    const isSetup = Boolean(setupStatus?.is_setup ?? setupStatus?.setup_completed);
+    if (!isStatusLoading && isSetup) {
       router.replace("/login");
     }
   }, [setupStatus, isStatusLoading, router]);
@@ -62,9 +63,17 @@ export default function SetupPage() {
         </div>
 
         {error && (
-          <div className="mt-6 flex items-start gap-2.5 rounded-lg bg-[var(--danger)]/10 p-3 text-xs text-[var(--danger)]">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className="mt-6 flex flex-col gap-2 rounded-lg bg-[var(--danger)]/10 p-3 text-xs text-[var(--danger)]">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+            <a
+              href="/login"
+              className="mt-1 font-semibold underline text-center hover:opacity-80"
+            >
+              Go to Sign In &rarr;
+            </a>
           </div>
         )}
 
