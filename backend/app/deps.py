@@ -22,7 +22,7 @@ from app.db.models.owner import OwnerUser, Session
 from app.db.models.project import GatewayKey, Project
 from app.db.session import get_db_session
 
-# Timeouts as specified in 03-security.md
+# Session timeouts: 8 hours idle, 7 days absolute
 IDLE_TIMEOUT = timedelta(hours=8)
 ABSOLUTE_TIMEOUT = timedelta(days=7)
 

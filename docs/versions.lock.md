@@ -1,6 +1,6 @@
 # Versions Lock
 
-All versions were pinned during setup by querying the package managers for current stable releases, following `docs/02-architecture.md` Section 2.
+All versions were pinned during setup by querying the package managers for current stable releases.
 
 Last updated: 2026-10-03
 

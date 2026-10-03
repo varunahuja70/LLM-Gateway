@@ -173,14 +173,10 @@ See full benchmark methodology and breakdowns in [docs/benchmarks.md](docs/bench
 
 ## Guides & Documentation
 
-- [PRD & Requirements](docs/01-prd.md)
-- [System Architecture & Data Model](docs/02-architecture.md)
-- [Security Model & Test Verification](docs/03-security.md)
-- [Frontend Specifications](docs/04-frontend.md)
-- [Deployment & Operations](docs/06-deployment.md)
 - [Connecting the OpenAI SDK](docs/guides/openai-sdk.md)
 - [Routing Anthropic Models](docs/guides/anthropic-migration.md)
 - [Running with Local Models (Ollama / vLLM)](docs/guides/local-models.md)
+- [Performance Benchmarks](docs/benchmarks.md)
 - [Release Notes v0.1.0](docs/releases/v0.1.0.md)
 
 ---
