@@ -70,7 +70,7 @@ jobs:
 
       - name: Run Pytest
         env:
-          GATEWAY_MASTER_KEY: dGVzdF9tYXN0ZXJfa2V5XzMyX2J5dGVzX3N0cmluZw==
+          GATEWAY_MASTER_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/llm_gateway
           REDIS_URL: redis://:redispassword@localhost:6379/0
           ENV: test
