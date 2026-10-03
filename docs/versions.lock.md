@@ -63,6 +63,7 @@ Tooling: Node v24.7.0 LTS, `pnpm` 10.17.1.
 | prettier-plugin-tailwindcss | 0.8.1 | `pnpm add -D prettier-plugin-tailwindcss` | Tailwind class sorting |
 | eslint | 9.39.5 | `pnpm create next-app` | Linter |
 | eslint-config-next | 16.3.8 | `pnpm create next-app` | Next.js lint configuration |
+| @playwright/test | 1.63.0 | `pnpm add -D @playwright/test` | End-to-end browser and smoke testing |
 
 ## Infrastructure
 
