@@ -982,25 +982,68 @@ export default function SettingsPage() {
               </p>
             </div>
 
+            {/* Demo Mode Toggle Card */}
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text)]">Demo Mode</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    {settings?.demo_mode
+                      ? "Banner is visible at the top. Gateway is using mock data mode."
+                      : "Production mode — top bar banner is hidden, all data is real."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                      settings?.demo_mode
+                        ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                        : "bg-[var(--success)]/15 text-[var(--success)]"
+                    }`}
+                  >
+                    {settings?.demo_mode ? "Demo ON" : "Production"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={updateSettingsMutation.isPending}
+                    onClick={async () => {
+                      await updateSettingsMutation.mutateAsync({ demo_mode: !settings?.demo_mode });
+                    }}
+                    className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                      settings?.demo_mode
+                        ? "bg-[var(--danger)]/10 text-[var(--danger)] border border-[var(--danger)]/30 hover:bg-[var(--danger)]/20"
+                        : "bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                    }`}
+                  >
+                    {updateSettingsMutation.isPending
+                      ? "Saving..."
+                      : settings?.demo_mode
+                      ? "Disable Demo Mode"
+                      : "Enable Demo Mode"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* System Info Card */}
             <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xs space-y-4">
+              <h3 className="text-sm font-semibold text-[var(--text)]">System Info</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="text-[var(--text-muted)] block">Version:</span>
                   <span className="font-mono font-bold text-[var(--text)]">v0.1.0</span>
                 </div>
                 <div>
-                  <span className="text-[var(--text-muted)] block">Demo Mode:</span>
-                  <span className="font-medium text-[var(--text)]">
-                    {settings?.demo_mode ? "Active (Sample Data Enabled)" : "Production Mode"}
-                  </span>
-                </div>
-                <div>
                   <span className="text-[var(--text-muted)] block">Backend Engine:</span>
-                  <span className="text-[var(--text)]">FastAPI (Python 3.13) + PostgreSQL 18 + Redis</span>
+                  <span className="text-[var(--text)]">FastAPI (Python 3.13) + SQLite / PostgreSQL</span>
                 </div>
                 <div>
                   <span className="text-[var(--text-muted)] block">Frontend UI:</span>
                   <span className="text-[var(--text)]">Next.js 16 (React 19, Tailwind v4)</span>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)] block">Data Retention:</span>
+                  <span className="text-[var(--text)]">{settings?.retention_days ?? 30} days</span>
                 </div>
               </div>
 
