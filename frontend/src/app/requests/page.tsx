@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -28,7 +28,7 @@ import {
   useSettings,
 } from "@/lib/queries";
 
-export default function RequestExplorerPage() {
+function RequestExplorerContent() {
   const searchParams = useSearchParams();
   const initialProjectId = searchParams.get("project_id") || "";
 
@@ -472,5 +472,21 @@ export default function RequestExplorerPage() {
         />
       </div>
     </AppShell>
+  );
+}
+
+export default function RequestExplorerPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="flex h-64 items-center justify-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+          </div>
+        </AppShell>
+      }
+    >
+      <RequestExplorerContent />
+    </Suspense>
   );
 }

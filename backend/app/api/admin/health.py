@@ -1,3 +1,6 @@
+from collections.abc import Awaitable, Callable
+from typing import cast
+
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
@@ -32,8 +35,9 @@ async def readyz(response: Response) -> dict[str, str]:
 
     # Check Redis
     try:
-        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        pong = await r.ping()  # type: ignore[misc]
+        r: aioredis.Redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        ping_call = cast(Callable[[], Awaitable[bool]], r.ping)
+        pong = await ping_call()
         await r.close()
         if pong:
             checks["redis"] = "ok"

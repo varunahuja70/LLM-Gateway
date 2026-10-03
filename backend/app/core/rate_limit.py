@@ -2,11 +2,24 @@ import asyncio
 import math
 import time
 import uuid
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 import redis.asyncio as aioredis
 
 from app.config import get_settings
+
+
+# types-redis does not annotate parameters of Redis.eval. We define a typed wrapper.
+async def _eval_lua_script(
+    client: aioredis.Redis,
+    script: str,
+    numkeys: int,
+    *args: Any,
+) -> Any:
+    eval_call = cast(Callable[..., Awaitable[Any]], client.eval)
+    return await eval_call(script, numkeys, *args)
+
 
 # Redis Lua script for atomic sliding window rate limiting
 SLIDING_WINDOW_LUA = """
@@ -64,14 +77,14 @@ async def check_rate_limit(
 
     if settings.ENV != "test":
         try:
-            r = aioredis.from_url(
+            r: aioredis.Redis = aioredis.from_url(
                 settings.REDIS_URL,
                 decode_responses=True,
                 socket_connect_timeout=0.1,
                 socket_timeout=0.1,
             )
-            res: Any = await r.eval(  # type: ignore[misc]
-                SLIDING_WINDOW_LUA, 1, key, now, window_seconds, limit_rpm
+            res: Any = await _eval_lua_script(
+                r, SLIDING_WINDOW_LUA, 1, key, now, window_seconds, limit_rpm
             )
             await r.close()
             if isinstance(res, list) and len(res) >= 2:
