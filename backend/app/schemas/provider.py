@@ -30,13 +30,25 @@ class ProviderCredentialResponse(BaseModel):
     name: str
     base_url: str | None
     key_last4: str
+    key_suffix: str = ""   # alias for key_last4 used by frontend
     created_at: datetime
     disabled_at: datetime | None
+    is_enabled: bool = True  # computed from disabled_at
+
+    @classmethod
+    def model_validate(cls, obj: object, **kwargs: object) -> "ProviderCredentialResponse":  # type: ignore[override]
+        instance = super().model_validate(obj, **kwargs)
+        # disabled_at being set means it is disabled
+        if hasattr(obj, "disabled_at"):
+            instance.is_enabled = obj.disabled_at is None  # type: ignore[union-attr]
+            instance.key_suffix = getattr(obj, "key_last4", "")
+        return instance
 
 
 class ProviderTestResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str
+    success: bool = True   # True when status == "ok"
     message: str
     latency_ms: int

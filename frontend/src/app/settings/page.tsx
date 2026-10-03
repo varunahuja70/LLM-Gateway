@@ -83,9 +83,9 @@ export default function SettingsPage() {
 
   // Mutations
   const createProviderMutation = useCreateProvider();
-  const updateProviderMutation = useUpdateProvider(testingProviderId || "");
-  const deleteProviderMutation = useDeleteProvider(providerToDelete?.id || "");
-  const testProviderMutation = useTestProvider(testingProviderId || "");
+  const updateProviderMutation = useUpdateProvider();
+  const deleteProviderMutation = useDeleteProvider();
+  const testProviderMutation = useTestProvider();
   const createPriceMutation = useCreatePrice();
   const updatePriceMutation = useUpdatePrice(editingPrice?.id || "");
   const importPricesMutation = useImportPrices();
@@ -122,7 +122,7 @@ export default function SettingsPage() {
     setTestingProviderId(p.id);
     setTestResult(null);
     try {
-      const res = await testProviderMutation.mutateAsync();
+      const res = await testProviderMutation.mutateAsync(p.id);
       setTestResult({ id: p.id, success: res.success, message: res.message });
     } catch (err: unknown) {
       setTestResult({
@@ -130,13 +130,17 @@ export default function SettingsPage() {
         success: false,
         message: err instanceof Error ? err.message : "Provider test failed.",
       });
+    } finally {
+      setTestingProviderId(null);
     }
   };
 
   const handleToggleProvider = async (p: ProviderCredential) => {
     try {
+      // Backend expects is_disabled (inverse of is_enabled)
       await updateProviderMutation.mutateAsync({
-        is_enabled: !p.is_enabled,
+        id: p.id,
+        is_disabled: p.is_enabled,  // if currently enabled, disable it; and vice versa
       });
     } catch {
       // handled
@@ -146,7 +150,7 @@ export default function SettingsPage() {
   const handleDeleteProvider = async () => {
     if (!providerToDelete) return;
     try {
-      await deleteProviderMutation.mutateAsync();
+      await deleteProviderMutation.mutateAsync(providerToDelete.id);
       setProviderToDelete(null);
     } catch {
       // handled
