@@ -387,6 +387,41 @@ async def seed_demo(session: AsyncSession) -> dict[str, Any]:
     }
 
 
+async def clear_demo(session: AsyncSession) -> dict[str, Any]:
+    """Remove all demo projects, keys, configs, requests, traces, and alerts."""
+    await session.execute(
+        delete(RequestContent).where(
+            RequestContent.request_id.in_(
+                select(RequestLog.id).where(RequestLog.project_id.in_([PROJECT_1_ID, PROJECT_2_ID]))
+            )
+        )
+    )
+    r_logs = await session.execute(
+        delete(RequestLog).where(RequestLog.project_id.in_([PROJECT_1_ID, PROJECT_2_ID]))
+    )
+    r_alerts = await session.execute(
+        delete(BudgetAlert).where(BudgetAlert.project_id.in_([PROJECT_1_ID, PROJECT_2_ID]))
+    )
+    r_keys = await session.execute(
+        delete(GatewayKey).where(GatewayKey.project_id.in_([PROJECT_1_ID, PROJECT_2_ID]))
+    )
+    r_configs = await session.execute(
+        delete(ProjectConfig).where(ProjectConfig.project_id.in_([PROJECT_1_ID, PROJECT_2_ID]))
+    )
+    r_projects = await session.execute(
+        delete(Project).where(Project.id.in_([PROJECT_1_ID, PROJECT_2_ID]))
+    )
+
+    await _upsert_setting(session, "demo_mode", False)
+    await session.commit()
+    logger.info("Demo data cleared: %d projects, %d logs", r_projects.rowcount, r_logs.rowcount)
+    return {
+        "projects_deleted": r_projects.rowcount,
+        "logs_deleted": r_logs.rowcount,
+        "alerts_deleted": r_alerts.rowcount,
+    }
+
+
 async def _upsert_setting(session: AsyncSession, key: str, value: Any) -> None:
     stmt = select(AppSetting).where(AppSetting.key == key)
     res = await session.execute(stmt)

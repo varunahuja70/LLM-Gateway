@@ -120,3 +120,28 @@ async def trigger_seed_demo(
         details=result,
     )
     return MessageResponse(message="Demo data successfully loaded.")
+
+
+@router.post(
+    "/clear-demo",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_csrf)],
+)
+async def trigger_clear_demo(
+    db: AsyncSession = Depends(get_db_session),
+    owner_auth: tuple[OwnerUser, Session] = Depends(require_owner),
+) -> Any:
+    """Purge synthetic demo data and revert dashboard to real data only."""
+    owner, _ = owner_auth
+    from scripts.seed_demo import clear_demo
+
+    result = await clear_demo(db)
+    await log_audit_event(
+        db,
+        action="demo_data_cleared",
+        actor_type="owner",
+        actor_id=owner.id,
+        details=result,
+    )
+    return MessageResponse(message="Demo data successfully unloaded.")

@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Save,
   Server,
+  Sparkles,
   Tag,
   Trash2,
   Upload,
@@ -23,12 +24,14 @@ import { ModelPrice, ProviderCredential } from "@/lib/api-types";
 import { formatMicroUsd } from "@/lib/formatters";
 import {
   useChangePassword,
+  useClearDemo,
   useCreatePrice,
   useCreateProvider,
   useDeleteProvider,
   useImportPrices,
   usePrices,
   useProviders,
+  useSeedDemo,
   useSettings,
   useTestProvider,
   useUpdatePrice,
@@ -76,6 +79,9 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
+  // Demo data state
+  const [demoActionMessage, setDemoActionMessage] = useState<string | null>(null);
+
   // Queries
   const { data: providers, isLoading: isProvidersLoading } = useProviders();
   const { data: prices, isLoading: isPricesLoading } = usePrices();
@@ -91,6 +97,8 @@ export default function SettingsPage() {
   const importPricesMutation = useImportPrices();
   const updateSettingsMutation = useUpdateSettings();
   const changePasswordMutation = useChangePassword();
+  const seedDemoMutation = useSeedDemo();
+  const clearDemoMutation = useClearDemo();
 
   // Handlers for Providers
   const handleCreateProvider = async (e: React.FormEvent) => {
@@ -986,46 +994,83 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            {/* Demo Mode Toggle Card */}
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xs">
-              <div className="flex items-center justify-between gap-4">
+            {/* Demo Data Management Card */}
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-semibold text-[var(--text)]">Demo Mode</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text)]">Sample Demo Data</h3>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
-                    {settings?.demo_mode
-                      ? "Banner is visible at the top. Gateway is using mock data mode."
-                      : "Production mode — top bar banner is hidden, all data is real."}
+                    {settings?.demo_banner?.has_sample_data || settings?.demo_mode
+                      ? "Sample projects, request logs, and budget alerts are currently active in your dashboard."
+                      : "No sample data loaded. Dashboard is displaying only your real gateway traffic."}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                      settings?.demo_mode
+                      settings?.demo_banner?.has_sample_data || settings?.demo_mode
                         ? "bg-[var(--accent)]/15 text-[var(--accent)]"
                         : "bg-[var(--success)]/15 text-[var(--success)]"
                     }`}
                   >
-                    {settings?.demo_mode ? "Demo ON" : "Production"}
+                    {settings?.demo_banner?.has_sample_data || settings?.demo_mode
+                      ? "Demo Data Active"
+                      : "Real Data Only"}
                   </span>
+                </div>
+              </div>
+
+              {demoActionMessage && (
+                <div className="rounded-md bg-[var(--success)]/10 p-2.5 text-xs text-[var(--success)] flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 shrink-0" />
+                  <span>{demoActionMessage}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 border-t border-[var(--border)]">
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  {settings?.demo_banner?.has_sample_data || settings?.demo_mode
+                    ? "Click Unload Demo Data to instantly purge all fake sample records."
+                    : "Click Load Demo Data to populate synthetic traffic for charts and explorer views."}
+                </p>
+
+                {settings?.demo_banner?.has_sample_data || settings?.demo_mode ? (
                   <button
                     type="button"
-                    disabled={updateSettingsMutation.isPending}
+                    disabled={clearDemoMutation.isPending}
                     onClick={async () => {
-                      await updateSettingsMutation.mutateAsync({ demo_mode: !settings?.demo_mode });
+                      setDemoActionMessage(null);
+                      try {
+                        const res = await clearDemoMutation.mutateAsync();
+                        setDemoActionMessage(res.message || "All fake demo data removed. Only real data is displayed.");
+                      } catch {
+                        // handled
+                      }
                     }}
-                    className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                      settings?.demo_mode
-                        ? "bg-[var(--danger)]/10 text-[var(--danger)] border border-[var(--danger)]/30 hover:bg-[var(--danger)]/20"
-                        : "bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                    }`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-3.5 py-1.5 text-xs font-semibold text-[var(--danger)] hover:bg-[var(--danger)]/20 transition-colors disabled:opacity-50 self-start sm:self-auto"
                   >
-                    {updateSettingsMutation.isPending
-                      ? "Saving..."
-                      : settings?.demo_mode
-                      ? "Disable Demo Mode"
-                      : "Enable Demo Mode"}
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>{clearDemoMutation.isPending ? "Unloading..." : "Unload Demo Data"}</span>
                   </button>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={seedDemoMutation.isPending}
+                    onClick={async () => {
+                      setDemoActionMessage(null);
+                      try {
+                        const res = await seedDemoMutation.mutateAsync();
+                        setDemoActionMessage(res.message || "Sample demo data loaded successfully.");
+                      } catch {
+                        // handled
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 self-start sm:self-auto"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>{seedDemoMutation.isPending ? "Loading..." : "Load Demo Data"}</span>
+                  </button>
+                )}
               </div>
             </div>
 

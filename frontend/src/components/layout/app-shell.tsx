@@ -4,7 +4,6 @@ import { ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
-import { DemoBanner } from "@/components/shared/DemoBanner";
 import { useAuth, useSettings, useSetupStatus } from "@/lib/queries";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -68,9 +67,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main content body */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {settings?.demo_mode && (
-          <DemoBanner hasSampleData={settings.demo_banner.has_sample_data} />
-        )}
         <Header onOpenMobileMenu={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl">{children}</div>
