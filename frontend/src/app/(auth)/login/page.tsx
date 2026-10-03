@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Shield, AlertCircle } from "lucide-react";
 import { useAuth, useLogin, useSetupStatus } from "@/lib/queries";
 
@@ -112,6 +113,15 @@ export default function LoginPage() {
             {loginMutation.isPending ? "Signing in..." : "Sign In"}
           </button>
         </form>
+
+        <div className="mt-6 pt-4 text-center border-t border-[var(--border)]">
+          <p className="text-xs text-[var(--text-muted)]">
+            First time setting up?{" "}
+            <Link href="/setup" className="font-semibold text-[var(--accent)] hover:underline">
+              Create owner account &rarr;
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

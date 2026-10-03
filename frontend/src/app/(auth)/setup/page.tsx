@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Check, X, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { Shield, Check, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useSetup, useSetupStatus } from "@/lib/queries";
 
 export default function SetupPage() {
@@ -15,12 +16,7 @@ export default function SetupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const isSetup = Boolean(setupStatus?.is_setup ?? setupStatus?.setup_completed);
-    if (!isStatusLoading && isSetup) {
-      router.replace("/login");
-    }
-  }, [setupStatus, isStatusLoading, router]);
+  const isSetup = Boolean(setupStatus?.is_setup ?? setupStatus?.setup_completed);
 
   const hasLength = password.length >= 12;
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
@@ -44,7 +40,38 @@ export default function SetupPage() {
   };
 
   if (isStatusLoading) {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+      </div>
+    );
+  }
+
+  // If already set up, show clear state with direct Sign In action
+  if (isSetup) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-4">
+        <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-8 shadow-xl text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--success)]/10 text-[var(--success)] shadow-xs mb-4">
+            <CheckCircle2 className="h-6 w-6" />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-[var(--text)]">
+            Setup Already Complete
+          </h1>
+          <p className="mt-2 text-xs text-[var(--text-muted)] leading-relaxed">
+            The primary administrator account has already been initialized for this gateway instance.
+          </p>
+          <div className="mt-6">
+            <Link
+              href="/login"
+              className="inline-flex w-full items-center justify-center rounded-md bg-[var(--accent)] py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[var(--accent-hover)]"
+            >
+              Go to Sign In &rarr;
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -68,12 +95,12 @@ export default function SetupPage() {
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
-            <a
+            <Link
               href="/login"
               className="mt-1 font-semibold underline text-center hover:opacity-80"
             >
-              Go to Sign In &rarr;
-            </a>
+              Already have an account? Sign In &rarr;
+            </Link>
           </div>
         )}
 
@@ -157,6 +184,15 @@ export default function SetupPage() {
             {setupMutation.isPending ? "Configuring Gateway..." : "Create Owner Account"}
           </button>
         </form>
+
+        <div className="mt-6 pt-4 text-center border-t border-[var(--border)]">
+          <p className="text-xs text-[var(--text-muted)]">
+            Already have an account?{" "}
+            <Link href="/login" className="font-semibold text-[var(--accent)] hover:underline">
+              Sign In &rarr;
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

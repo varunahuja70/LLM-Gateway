@@ -16,12 +16,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: settings } = useSettings();
 
   useEffect(() => {
-    if (!isSetupLoading && setupStatus && !setupStatus.setup_completed) {
+    // Use is_setup as primary field (setup_completed is a legacy alias)
+    const isSetup = setupStatus
+      ? Boolean(setupStatus.is_setup ?? setupStatus.setup_completed)
+      : undefined;
+
+    if (!isSetupLoading && setupStatus && !isSetup) {
       router.replace("/setup");
       return;
     }
 
-    if (!isAuthLoading && !user && (!setupStatus || setupStatus.setup_completed)) {
+    if (!isAuthLoading && !user && isSetup) {
       router.replace("/login");
     }
   }, [user, isAuthLoading, setupStatus, isSetupLoading, router]);
