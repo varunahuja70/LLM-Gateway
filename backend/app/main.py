@@ -14,6 +14,7 @@ from app.api.admin.projects import router as projects_router
 from app.api.admin.providers import router as providers_router
 from app.api.gateway.chat import router as chat_router
 from app.api.gateway.embeddings import router as embeddings_router
+from app.api.gateway.feedback import router as feedback_router
 from app.api.gateway.models import router as models_router
 from app.config import get_settings
 from app.core.errors import GatewayAPIException
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
     # Gateway API routes
     app.include_router(chat_router)
     app.include_router(embeddings_router)
+    app.include_router(feedback_router)
     app.include_router(models_router)
 
     return app

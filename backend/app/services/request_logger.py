@@ -193,7 +193,9 @@ class RequestLoggerService:
 
                     # Compute quality signal: empty_or_truncated
                     is_empty_or_truncated = (item.finish_reason == "length") or (
-                        item.output_tokens == 0 and not (item.output_content or "").strip()
+                        item.endpoint == "chat"
+                        and item.status == "ok"
+                        and not (item.output_content or "").strip()
                     )
 
                     # Redact error message
