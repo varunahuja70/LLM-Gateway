@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.budget import check_budget_block
 from app.core.errors import GatewayAPIException
+from app.core.fallback import build_fallback_chain, is_fallback_trigger
 from app.core.rate_limit import check_rate_limit
 from app.core.routing import resolve_model, resolve_provider_credentials
 from app.db.base import utc_now, uuid7
@@ -103,16 +104,25 @@ async def chat_completions(
     cache_header = request.headers.get("X-Gateway-Cache", "").lower()
     cache_status = "bypass" if cache_header == "bypass" else "miss"
 
-    # 4. Resolve model and provider
+    # 4. Resolve primary model and candidate fallback chain
     fallback_chain = project.config.fallback_chain if project.config else None
-    provider, model = await resolve_model(payload.model, fallback_chain, db)
-    model_used = f"{provider}/{model}"
+    max_fallbacks = project.config.max_fallbacks if project.config else 2
+    primary_provider, primary_model = await resolve_model(payload.model, fallback_chain, db)
+    primary_model_used = f"{primary_provider}/{primary_model}"
 
-    # Standard gateway response headers
+    candidates = build_fallback_chain(
+        primary_provider=primary_provider,
+        primary_model=primary_model,
+        fallback_chain=fallback_chain,
+        max_fallbacks=max_fallbacks,
+        is_embedding=False,
+    )
+
+    # Standard gateway response headers (initial)
     response_headers = {
         "X-Gateway-Request-Id": str(req_id),
         "X-Gateway-Cache": cache_status,
-        "X-Gateway-Model-Used": model_used,
+        "X-Gateway-Model-Used": primary_model_used,
         "X-Gateway-Fallback": "none",
     }
 
@@ -126,9 +136,9 @@ async def chat_completions(
             gateway_key_id=gateway_key.id,
             created_at=req_time,
             endpoint="chat",
-            provider=provider,
-            model_requested=payload.model or model_used,
-            model_used=model_used,
+            provider=primary_provider,
+            model_requested=payload.model or primary_model_used,
+            model_used=primary_model_used,
             status="rate_limited",
             http_status=429,
             error_type="requests",
@@ -153,9 +163,9 @@ async def chat_completions(
             gateway_key_id=gateway_key.id,
             created_at=req_time,
             endpoint="chat",
-            provider=provider,
-            model_requested=payload.model or model_used,
-            model_used=model_used,
+            provider=primary_provider,
+            model_requested=payload.model or primary_model_used,
+            model_used=primary_model_used,
             status="blocked",
             http_status=429,
             error_type="budget_exceeded",
@@ -171,118 +181,81 @@ async def chat_completions(
             headers={"Retry-After": str(budget_retry), **response_headers},
         )
 
-    # 5. Resolve provider credentials
+    # 5. Prepare execution credentials and headers
     cred_map = project.config.provider_credential_id if project.config else None
-    api_key, base_url = await resolve_provider_credentials(cred_map, provider, db)
-
-    # 6. Instantiate adapter
-    adapter = get_adapter(provider)
-
-    # Extra headers (e.g. forward X-Mock-Fail for tests)
     extra_headers: dict[str, str] = {}
-    mock_fail = request.headers.get("X-Mock-Fail")
-    if mock_fail:
-        extra_headers["X-Mock-Fail"] = mock_fail
+    for h in ("x-mock-fail", "x-mock-fail-model", "x-mock-fail-after-chunks"):
+        val = request.headers.get(h)
+        if val:
+            extra_headers[h] = val
 
-    # Format messages list
     raw_messages = [m.model_dump(exclude_none=True) for m in payload.messages]
-    chat_request = ChatRequest(
-        model=model,
-        messages=raw_messages,
-        stream=payload.stream,
-        temperature=payload.temperature,
-        max_tokens=requested_tokens,
-        top_p=payload.top_p,
-        tools=payload.tools,
-        tool_choice=payload.tool_choice,
-        extra_headers=extra_headers,
-    )
-
-    # Compute request hash for log
     raw_request_dict = payload.model_dump(exclude_none=True)
     request_canonical = json.dumps(raw_request_dict, sort_keys=True)
     request_hash = hashlib.sha256(request_canonical.encode("utf-8")).digest()
     log_content_enabled = bool(project.config and project.config.log_content)
 
-    # 7. Non-streaming branch
+    # 6. Non-streaming branch with fallback
     if not payload.stream:
-        try:
-            chat_res = await adapter.chat(chat_request, api_key=api_key, base_url=base_url)
+        fallback_used = False
+        fallback_from: str | None = None
+        fallback_reason: str | None = None
+        selected_provider = primary_provider
+        selected_model = primary_model
+        chat_res = None
+        last_err: Exception | None = None
+
+        for cand_idx, (cand_provider, cand_model) in enumerate(candidates):
+            selected_provider = cand_provider
+            selected_model = cand_model
+            if cand_idx > 0:
+                fallback_used = True
+                fallback_from = primary_model_used
+
+            try:
+                api_key, base_url = await resolve_provider_credentials(cred_map, cand_provider, db)
+                adapter = get_adapter(cand_provider)
+                chat_request = ChatRequest(
+                    model=cand_model,
+                    messages=raw_messages,
+                    stream=False,
+                    temperature=payload.temperature,
+                    max_tokens=requested_tokens,
+                    top_p=payload.top_p,
+                    tools=payload.tools,
+                    tool_choice=payload.tool_choice,
+                    extra_headers=extra_headers,
+                )
+                chat_res = await adapter.chat(chat_request, api_key=api_key, base_url=base_url)
+                break
+            except Exception as err:
+                last_err = err
+                can_fallback, reason = is_fallback_trigger(err)
+                if can_fallback and cand_idx + 1 < len(candidates):
+                    fallback_reason = reason
+                    continue
+                break
+
+        final_model_used = f"{selected_provider}/{selected_model}"
+        response_headers = {
+            "X-Gateway-Request-Id": str(req_id),
+            "X-Gateway-Cache": cache_status,
+            "X-Gateway-Model-Used": final_model_used,
+            "X-Gateway-Fallback": fallback_from if fallback_used and fallback_from else "none",
+        }
+
+        if chat_res is None:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
+            status_code = 502
+            err_msg = str(last_err)
+            err_type = "provider_error"
+            err_code = None
 
-            # Extract usage metrics
-            input_tokens = chat_res.usage.prompt_tokens
-            output_tokens = chat_res.usage.completion_tokens
-            cached_tokens = chat_res.usage.cached_prompt_tokens
-
-            choice = chat_res.choices[0] if chat_res.choices else None
-            finish_reason = choice.finish_reason if choice else None
-            output_content: str | None = None
-            if choice and isinstance(choice.message, dict):
-                output_content = str(choice.message.get("content") or "")
-
-            response_data: dict[str, Any] = {
-                "id": chat_res.id,
-                "object": "chat.completion",
-                "created": chat_res.created,
-                "model": chat_res.model,
-                "choices": [
-                    {
-                        "index": c.index,
-                        "message": c.message,
-                        "finish_reason": c.finish_reason,
-                    }
-                    for c in chat_res.choices
-                ],
-                "usage": {
-                    "prompt_tokens": chat_res.usage.prompt_tokens,
-                    "completion_tokens": chat_res.usage.completion_tokens,
-                    "total_tokens": chat_res.usage.total_tokens,
-                    "prompt_tokens_details": {
-                        "cached_tokens": chat_res.usage.cached_prompt_tokens,
-                    },
-                },
-            }
-            if chat_res.system_fingerprint:
-                response_data["system_fingerprint"] = chat_res.system_fingerprint
-
-            # Asynchronously log completion
-            log_item = RequestLogItem(
-                id=req_id,
-                project_id=project.id,
-                gateway_key_id=gateway_key.id,
-                created_at=req_time,
-                endpoint="chat",
-                provider=provider,
-                model_requested=payload.model or model_used,
-                model_used=model_used,
-                status="ok",
-                http_status=200,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_input_tokens=cached_tokens,
-                usage_estimated=chat_res.usage.usage_estimated,
-                latency_ms=latency_ms,
-                streamed=False,
-                finish_reason=finish_reason,
-                user_tag=user_tag,
-                request_hash=request_hash,
-                log_content=log_content_enabled,
-                request_json=raw_request_dict if log_content_enabled else None,
-                response_json=response_data if log_content_enabled else None,
-                output_content=output_content,
-                config=project.config,
-            )
-            request_logger.log(log_item)
-
-            return JSONResponse(
-                content=response_data,
-                status_code=200,
-                headers=response_headers,
-            )
-        except ProviderError as err:
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            status_code = _map_provider_error_status(err)
+            if isinstance(last_err, ProviderError):
+                status_code = _map_provider_error_status(last_err)
+                err_msg = last_err.message
+                err_type = last_err.error_type
+                err_code = last_err.code
 
             log_item = RequestLogItem(
                 id=req_id,
@@ -290,15 +263,18 @@ async def chat_completions(
                 gateway_key_id=gateway_key.id,
                 created_at=req_time,
                 endpoint="chat",
-                provider=provider,
-                model_requested=payload.model or model_used,
-                model_used=model_used,
+                provider=selected_provider,
+                model_requested=payload.model or primary_model_used,
+                model_used=final_model_used,
                 status="error",
                 http_status=status_code,
-                error_type=err.error_type,
-                error_message=err.message,
+                error_type=err_type,
+                error_message=err_msg,
                 latency_ms=latency_ms,
                 streamed=False,
+                fallback_used=fallback_used,
+                fallback_from=fallback_from,
+                fallback_reason=fallback_reason,
                 user_tag=user_tag,
                 request_hash=request_hash,
             )
@@ -306,16 +282,214 @@ async def chat_completions(
 
             raise GatewayAPIException(
                 status_code=status_code,
-                message=err.message,
-                error_type=err.error_type,
-                code=err.code,
+                message=err_msg,
+                error_type=err_type,
+                code=err_code,
                 headers=response_headers,
-            ) from err
+            )
 
-    # 8. Streaming branch (SSE)
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        input_tokens = chat_res.usage.prompt_tokens
+        output_tokens = chat_res.usage.completion_tokens
+        cached_tokens = chat_res.usage.cached_prompt_tokens
+
+        choice = chat_res.choices[0] if chat_res.choices else None
+        finish_reason = choice.finish_reason if choice else None
+        output_content = None
+        if choice and isinstance(choice.message, dict):
+            output_content = str(choice.message.get("content") or "")
+
+        response_data: dict[str, Any] = {
+            "id": chat_res.id,
+            "object": "chat.completion",
+            "created": chat_res.created,
+            "model": chat_res.model,
+            "choices": [
+                {
+                    "index": c.index,
+                    "message": c.message,
+                    "finish_reason": c.finish_reason,
+                }
+                for c in chat_res.choices
+            ],
+            "usage": {
+                "prompt_tokens": chat_res.usage.prompt_tokens,
+                "completion_tokens": chat_res.usage.completion_tokens,
+                "total_tokens": chat_res.usage.total_tokens,
+                "prompt_tokens_details": {
+                    "cached_tokens": chat_res.usage.cached_prompt_tokens,
+                },
+            },
+        }
+        if chat_res.system_fingerprint:
+            response_data["system_fingerprint"] = chat_res.system_fingerprint
+
+        log_item = RequestLogItem(
+            id=req_id,
+            project_id=project.id,
+            gateway_key_id=gateway_key.id,
+            created_at=req_time,
+            endpoint="chat",
+            provider=selected_provider,
+            model_requested=payload.model or primary_model_used,
+            model_used=final_model_used,
+            status="ok",
+            http_status=200,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_input_tokens=cached_tokens,
+            usage_estimated=chat_res.usage.usage_estimated,
+            latency_ms=latency_ms,
+            streamed=False,
+            finish_reason=finish_reason,
+            fallback_used=fallback_used,
+            fallback_from=fallback_from,
+            fallback_reason=fallback_reason,
+            user_tag=user_tag,
+            request_hash=request_hash,
+            log_content=log_content_enabled,
+            request_json=raw_request_dict if log_content_enabled else None,
+            response_json=response_data if log_content_enabled else None,
+            output_content=output_content,
+            config=project.config,
+        )
+        request_logger.log(log_item)
+
+        return JSONResponse(
+            content=response_data,
+            status_code=200,
+            headers=response_headers,
+        )
+
+    # 7. Streaming branch (SSE) with pre-first-byte fallback
+    fallback_used = False
+    fallback_from = None
+    fallback_reason = None
+    selected_provider = primary_provider
+    selected_model = primary_model
+    active_stream = None
+    first_chunk = None
+    last_err = None
+
+    for cand_idx, (cand_provider, cand_model) in enumerate(candidates):
+        selected_provider = cand_provider
+        selected_model = cand_model
+        if cand_idx > 0:
+            fallback_used = True
+            fallback_from = primary_model_used
+
+        try:
+            api_key, base_url = await resolve_provider_credentials(cred_map, cand_provider, db)
+            adapter = get_adapter(cand_provider)
+            chat_request = ChatRequest(
+                model=cand_model,
+                messages=raw_messages,
+                stream=True,
+                temperature=payload.temperature,
+                max_tokens=requested_tokens,
+                top_p=payload.top_p,
+                tools=payload.tools,
+                tool_choice=payload.tool_choice,
+                extra_headers=extra_headers,
+            )
+            stream_iter = adapter.stream_chat(chat_request, api_key=api_key, base_url=base_url)
+            # Pull first chunk before sending any byte to client
+            first_chunk = await anext(stream_iter)
+            active_stream = stream_iter
+            break
+        except Exception as err:
+            last_err = err
+            can_fallback, reason = is_fallback_trigger(err)
+            if can_fallback and cand_idx + 1 < len(candidates):
+                fallback_reason = reason
+                continue
+            break
+
+    final_model_used = f"{selected_provider}/{selected_model}"
+    response_headers = {
+        "X-Gateway-Request-Id": str(req_id),
+        "X-Gateway-Cache": cache_status,
+        "X-Gateway-Model-Used": final_model_used,
+        "X-Gateway-Fallback": fallback_from if fallback_used and fallback_from else "none",
+    }
+
+    if active_stream is None or first_chunk is None:
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        status_code = 502
+        err_msg = str(last_err)
+        err_type = "provider_error"
+        err_code = None
+
+        if isinstance(last_err, ProviderError):
+            status_code = _map_provider_error_status(last_err)
+            err_msg = last_err.message
+            err_type = last_err.error_type
+            err_code = last_err.code
+
+        log_item = RequestLogItem(
+            id=req_id,
+            project_id=project.id,
+            gateway_key_id=gateway_key.id,
+            created_at=req_time,
+            endpoint="chat",
+            provider=selected_provider,
+            model_requested=payload.model or primary_model_used,
+            model_used=final_model_used,
+            status="error",
+            http_status=status_code,
+            error_type=err_type,
+            error_message=err_msg,
+            latency_ms=latency_ms,
+            streamed=True,
+            fallback_used=fallback_used,
+            fallback_from=fallback_from,
+            fallback_reason=fallback_reason,
+            user_tag=user_tag,
+            request_hash=request_hash,
+        )
+        request_logger.log(log_item)
+
+        raise GatewayAPIException(
+            status_code=status_code,
+            message=err_msg,
+            error_type=err_type,
+            code=err_code,
+            headers=response_headers,
+        )
+
+    def _format_chunk(chunk: Any) -> str:
+        chunk_dict: dict[str, Any] = {
+            "id": chunk.id,
+            "object": "chat.completion.chunk",
+            "created": chunk.created,
+            "model": chunk.model,
+            "choices": [
+                {
+                    "index": sc.index,
+                    "delta": {
+                        k: v
+                        for k, v in {
+                            "role": sc.delta.role,
+                            "content": sc.delta.content,
+                            "tool_calls": sc.delta.tool_calls,
+                        }.items()
+                        if v is not None
+                    },
+                    "finish_reason": sc.finish_reason,
+                }
+                for sc in chunk.choices
+            ],
+        }
+        if chunk.usage:
+            chunk_dict["usage"] = {
+                "prompt_tokens": chunk.usage.prompt_tokens,
+                "completion_tokens": chunk.usage.completion_tokens,
+                "total_tokens": chunk.usage.total_tokens,
+            }
+        return f"data: {json.dumps(chunk_dict)}\n\n"
+
     async def sse_event_stream() -> AsyncIterator[str]:
-        ttft_recorded = False
-        ttft_ms: int | None = None
+        ttft_ms: int | None = int((time.perf_counter() - start_time) * 1000)
         total_input_tokens = 0
         total_output_tokens = 0
         cached_tokens = 0
@@ -327,14 +501,26 @@ async def chat_completions(
         error_type: str | None = None
 
         try:
-            async for chunk in adapter.stream_chat(
-                chat_request, api_key=api_key, base_url=base_url
-            ):
-                if not ttft_recorded:
-                    ttft_ms = int((time.perf_counter() - start_time) * 1000)
-                    ttft_recorded = True
+            assert first_chunk is not None
+            assert active_stream is not None
 
-                # Extract chunk details
+            # Yield pre-fetched first chunk
+            if first_chunk.choices:
+                c = first_chunk.choices[0]
+                if c.finish_reason:
+                    finish_reason = c.finish_reason
+                if c.delta and c.delta.content:
+                    collected_content.append(c.delta.content)
+            if first_chunk.usage:
+                total_input_tokens = first_chunk.usage.prompt_tokens
+                total_output_tokens = first_chunk.usage.completion_tokens
+                cached_tokens = first_chunk.usage.cached_prompt_tokens
+                usage_estimated = first_chunk.usage.usage_estimated
+
+            yield _format_chunk(first_chunk)
+
+            # Yield remaining chunks from active stream (no fallback allowed after first byte)
+            async for chunk in active_stream:
                 if chunk.choices:
                     c = chunk.choices[0]
                     if c.finish_reason:
@@ -348,37 +534,7 @@ async def chat_completions(
                     cached_tokens = chunk.usage.cached_prompt_tokens
                     usage_estimated = chunk.usage.usage_estimated
 
-                chunk_dict: dict[str, Any] = {
-                    "id": chunk.id,
-                    "object": "chat.completion.chunk",
-                    "created": chunk.created,
-                    "model": chunk.model,
-                    "choices": [
-                        {
-                            "index": sc.index,
-                            "delta": {
-                                k: v
-                                for k, v in {
-                                    "role": sc.delta.role,
-                                    "content": sc.delta.content,
-                                    "tool_calls": sc.delta.tool_calls,
-                                }.items()
-                                if v is not None
-                            },
-                            "finish_reason": sc.finish_reason,
-                        }
-                        for sc in chunk.choices
-                    ],
-                }
-                if chunk.usage:
-                    chunk_dict["usage"] = {
-                        "prompt_tokens": chunk.usage.prompt_tokens,
-                        "completion_tokens": chunk.usage.completion_tokens,
-                        "total_tokens": chunk.usage.total_tokens,
-                    }
-
-                chunk_json = json.dumps(chunk_dict)
-                yield f"data: {chunk_json}\n\n"
+                yield _format_chunk(chunk)
 
             yield "data: [DONE]\n\n"
         except Exception as err:
@@ -394,7 +550,6 @@ async def chat_completions(
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             full_output = "".join(collected_content)
 
-            # If usage was not in stream, estimate fallback
             if total_input_tokens == 0 and total_output_tokens == 0:
                 from app.providers.base import estimate_tokens
 
@@ -410,9 +565,9 @@ async def chat_completions(
                 gateway_key_id=gateway_key.id,
                 created_at=req_time,
                 endpoint="chat",
-                provider=provider,
-                model_requested=payload.model or model_used,
-                model_used=model_used,
+                provider=selected_provider,
+                model_requested=payload.model or primary_model_used,
+                model_used=final_model_used,
                 status="error" if is_error else "ok",
                 http_status=500 if is_error else 200,
                 error_type=error_type,
@@ -425,6 +580,9 @@ async def chat_completions(
                 ttft_ms=ttft_ms,
                 streamed=True,
                 finish_reason=finish_reason,
+                fallback_used=fallback_used,
+                fallback_from=fallback_from,
+                fallback_reason=fallback_reason,
                 user_tag=user_tag,
                 request_hash=request_hash,
                 log_content=log_content_enabled,

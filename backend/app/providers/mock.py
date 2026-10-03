@@ -27,16 +27,28 @@ class MockProviderAdapter(ProviderAdapter):
     Supports failure simulation on demand via the header `X-Mock-Fail: 500|429|timeout`.
     """
 
-    def _check_fail_on_demand(self, request: ChatRequest) -> None:
-        fail_mode = request.extra_headers.get("x-mock-fail") or request.extra_headers.get(
-            "X-Mock-Fail"
+    def _check_fail_on_demand(self, model: str, extra_headers: dict[str, str]) -> None:
+        fail_model = extra_headers.get("x-mock-fail-model") or extra_headers.get(
+            "X-Mock-Fail-Model"
         )
+        if fail_model and fail_model.lower() not in model.lower():
+            return
+
+        fail_mode = extra_headers.get("x-mock-fail") or extra_headers.get("X-Mock-Fail")
         if not fail_mode:
             return
 
         mode = fail_mode.lower().strip()
-        if mode in ("500", "503", "error"):
-            raise ProviderOverloadedError("Mock provider simulated 503 error.", provider="mock")
+        if mode == "400":
+            from app.providers.base import ProviderBadRequestError
+
+            raise ProviderBadRequestError(
+                "Mock provider simulated 400 bad request.", provider="mock"
+            )
+        if mode in ("401", "403"):
+            from app.providers.base import ProviderAuthError
+
+            raise ProviderAuthError("Mock provider simulated 401 auth error.", provider="mock")
         if mode == "429":
             raise ProviderRateLimitError(
                 "Mock provider simulated 429 rate limit exceeded.", provider="mock"
@@ -45,6 +57,8 @@ class MockProviderAdapter(ProviderAdapter):
             raise ProviderTimeoutError(
                 "Mock provider simulated gateway request timeout.", provider="mock"
             )
+        if mode in ("500", "503", "error"):
+            raise ProviderOverloadedError("Mock provider simulated 503 error.", provider="mock")
         raise ProviderError(
             f"Mock provider simulated generic error: {mode}", status_code=500, provider="mock"
         )
@@ -52,7 +66,7 @@ class MockProviderAdapter(ProviderAdapter):
     async def chat(
         self, request: ChatRequest, api_key: str, base_url: str | None = None
     ) -> ChatResponse:
-        self._check_fail_on_demand(request)
+        self._check_fail_on_demand(request.model, request.extra_headers)
         _ = (api_key, base_url)
 
         # Deterministic generation
@@ -87,8 +101,10 @@ class MockProviderAdapter(ProviderAdapter):
     async def stream_chat(
         self, request: ChatRequest, api_key: str, base_url: str | None = None
     ) -> AsyncIterator[ChatStreamChunk]:
-        self._check_fail_on_demand(request)
+        self._check_fail_on_demand(request.model, request.extra_headers)
         _ = (api_key, base_url)
+
+        fail_after_chunks = request.extra_headers.get("x-mock-fail-after-chunks")
 
         last_message = request.messages[-1].get("content", "") if request.messages else "Hello"
         content = f"Mock response to: {last_message}"
@@ -110,6 +126,10 @@ class MockProviderAdapter(ProviderAdapter):
 
         # Content chunks
         for i, word in enumerate(tokens):
+            if fail_after_chunks and i >= int(fail_after_chunks):
+                raise ProviderOverloadedError(
+                    "Mock provider simulated mid-stream failure.", provider="mock"
+                )
             delta_text = word if i == 0 else f" {word}"
             yield ChatStreamChunk(
                 id=req_id,
@@ -134,6 +154,7 @@ class MockProviderAdapter(ProviderAdapter):
     async def embeddings(
         self, request: EmbeddingRequest, api_key: str, base_url: str | None = None
     ) -> EmbeddingResponse:
+        self._check_fail_on_demand(request.model, request.extra_headers)
         _ = (api_key, base_url)
         inputs = [request.input] if isinstance(request.input, str) else request.input
         items: list[EmbeddingItem] = []

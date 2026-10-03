@@ -181,6 +181,7 @@ class ChatStreamChunk:
 class EmbeddingRequest:
     model: str
     input: str | list[str]
+    extra_headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
