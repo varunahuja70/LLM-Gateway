@@ -60,8 +60,13 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
             res = await session.execute(select(ModelPrice).limit(1))
             if res.scalar_one_or_none() is None:
                 await seed_prices(session)
-    except Exception:
-        pass
+    except Exception as e:
+        logger = structlog.get_logger(__name__)
+        logger.warning(
+            "auto_seed_prices_failed",
+            error=str(e),
+            msg="Could not auto-seed default model prices on startup. Migrations may be pending.",
+        )
 
     try:
         yield

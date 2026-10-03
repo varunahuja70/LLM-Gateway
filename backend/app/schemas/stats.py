@@ -15,6 +15,7 @@ class OverviewStats(BaseModel):
     error_rate: float = 0.0
     fallback_rate: float = 0.0
     avg_latency_ms: float = 0.0
+    p95_latency_ms: float | None = None
     cache_hit_rate: float = 0.0
 
 

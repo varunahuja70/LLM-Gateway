@@ -27,9 +27,16 @@ services:
       - NODE_ENV=development
 
   postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: llm_gateway
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
 
   redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redispassword}"]
     ports:
       - "6379:6379"

@@ -107,8 +107,8 @@ class RequestLoggerService:
                     project_id=str(item.project_id),
                     period="limit",
                 ).inc()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to record prometheus metrics: %s", exc)
 
     def queue_size(self) -> int:
         """Return the current number of items waiting in the log queue."""

@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
-import { useAuth, useSettings, useSetupStatus } from "@/lib/queries";
+import { useAuth, useSetupStatus } from "@/lib/queries";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -12,7 +12,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const { data: setupStatus, isLoading: isSetupLoading } = useSetupStatus();
   const { data: user, isLoading: isAuthLoading } = useAuth();
-  const { data: settings } = useSettings();
 
   useEffect(() => {
     // Use is_setup as primary field (setup_completed is a legacy alias)

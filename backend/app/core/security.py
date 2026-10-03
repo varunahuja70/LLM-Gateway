@@ -85,13 +85,13 @@ def validate_password_strength(password: str) -> None:
 def hash_password(password: str) -> str:
     """Hash password using Argon2id."""
     validate_password_strength(password)
-    return _ph.hash(password)
+    return str(_ph.hash(password))
 
 
 def verify_password(password: str, hashed: str) -> bool:
     """Verify password against Argon2id hash in constant time."""
     try:
-        return _ph.verify(hashed, password)
+        return bool(_ph.verify(hashed, password))
     except VerifyMismatchError:
         return False
     except Exception:

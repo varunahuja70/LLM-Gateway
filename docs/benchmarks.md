@@ -1,12 +1,13 @@
-# Gateway Benchmarks and Overhead Analysis
+# Gateway Overhead Benchmark (Mock Provider)
 
-This document records the measured performance, proxy path overhead, and load testing characteristics of the LLM Gateway.
+> **Important Note on Methodology**: These measurements reflect **gateway proxy overhead only**, benchmarked using an in-memory zero-latency mock provider under a synthetic workload. They measure the CPU, memory, serialization, authentication, routing, and logging overhead added by the gateway itself. They do **not** represent real-world upstream network latency from third-party APIs (such as OpenAI, Anthropic, or Google), where response latency is dominated by remote model inference times and internet transit.
 
 ## Test Environment
+- **Benchmark Type**: Mock-provider gateway overhead benchmark
 - **Platform**: Windows 11 / AMD/Intel 64-bit Architecture
-- **Runtime**: Python 3.13 / 3.14 via `uv`
+- **Runtime**: Python 3.13+ (compatible with Python 3.13 in CI and 3.14 in local development via `uv`)
 - **Application Server**: FastAPI / Starlette async ASGI pipeline
-- **Provider Tested**: Mock Provider (`mock/gpt-4o-mini`) with 0ms upstream network latency
+- **Provider Tested**: Deterministic Mock Provider (`mock/gpt-4o-mini`) with 0ms upstream network latency
 - **Database Engine**: In-memory async SQLite engine with connection isolation
 - **Authentication**: O(1) in-memory cryptographic gateway key verification with SHA-256 key hashing
 

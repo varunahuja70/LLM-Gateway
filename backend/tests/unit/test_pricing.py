@@ -95,3 +95,69 @@ def test_zero_tokens_priced_model_returns_zero() -> None:
         price=price,
     )
     assert cost == 0
+
+
+def test_cached_tokens_exceeding_input_tokens_clamped() -> None:
+    """Cached tokens cannot exceed input tokens (clamped safely to avoid negative regular tokens)."""
+    price = PriceInfo(
+        input_micro_usd_per_mtok=1_000_000,
+        output_micro_usd_per_mtok=2_000_000,
+        cached_input_micro_usd_per_mtok=200_000,
+    )
+    # Requested 500 input tokens, but passed 9999 cached tokens
+    cost = calculate_cost(
+        provider="openai",
+        model="gpt-4o",
+        input_tokens=500,
+        output_tokens=100,
+        cached_input_tokens=9999,
+        price=price,
+    )
+    # 500 cached tokens * 200,000 / 1,000,000 = 100 micro-USD
+    # 100 output tokens * 2,000,000 / 1,000,000 = 200 micro-USD
+    # Total = 300 micro-USD
+    assert cost == 300
+
+
+def test_fallback_model_cost_calculation() -> None:
+    """Ensure cost calculation correctly uses fallback model pricing when fallback occurs."""
+    primary_price = PriceInfo(
+        input_micro_usd_per_mtok=3_000_000,  # claude-3-5-sonnet: $3.00/Mtok
+        output_micro_usd_per_mtok=15_000_000,  # $15.00/Mtok
+    )
+    fallback_price = PriceInfo(
+        input_micro_usd_per_mtok=250_000,  # claude-3-5-haiku: $0.25/Mtok
+        output_micro_usd_per_mtok=1_250_000,  # $1.25/Mtok
+    )
+
+    # If primary had run:
+    primary_cost = calculate_cost("anthropic", "claude-3-5-sonnet", 2000, 500, price=primary_price)
+    assert primary_cost == (2000 * 3) + (500 * 15)  # 6000 + 7500 = 13500
+
+    # When fallback executes instead:
+    fallback_cost = calculate_cost("anthropic", "claude-3-5-haiku", 2000, 500, price=fallback_price)
+    # 2000 * 250,000 / 1,000,000 = 500
+    # 500 * 1,250,000 / 1,000,000 = 625
+    # Total = 1125 micro-USD
+    assert fallback_cost == 1125
+    assert fallback_cost < primary_cost
+
+
+def test_streaming_and_estimated_usage_cost() -> None:
+    """Ensure accumulated streaming tokens calculate exact micro-USD costs."""
+    price = PriceInfo(
+        input_micro_usd_per_mtok=150_000,  # gemini-1.5-flash: $0.15/Mtok
+        output_micro_usd_per_mtok=600_000,  # $0.60/Mtok
+    )
+    # Stream completed with 4,500 prompt tokens and 1,200 streamed completion tokens
+    cost = calculate_cost(
+        provider="google",
+        model="gemini-1.5-flash",
+        input_tokens=4500,
+        output_tokens=1200,
+        price=price,
+    )
+    # 4500 * 150,000 / 1,000,000 = 675
+    # 1200 * 600,000 / 1,000,000 = 720
+    # Total = 1395 micro-USD
+    assert cost == 1395

@@ -249,6 +249,7 @@ async def test_stats_match_fixture_dataset(
     assert p1_overview.fallback_rate == pytest.approx(0.3333, abs=1e-4)
     assert p1_overview.cache_hit_rate == pytest.approx(0.3333, abs=1e-4)
     assert p1_overview.avg_latency_ms == pytest.approx(240.0, abs=1e-2)
+    assert p1_overview.p95_latency_ms == pytest.approx(470.0, abs=1e-2)
 
     # 2. Global Overview (both projects)
     global_overview = await get_overview_stats(test_db)
@@ -262,6 +263,7 @@ async def test_stats_match_fixture_dataset(
     assert global_overview.fallback_rate == 0.25
     assert global_overview.cache_hit_rate == 0.25
     assert global_overview.avg_latency_ms == pytest.approx(255.0, abs=1e-2)
+    assert global_overview.p95_latency_ms == pytest.approx(470.0, abs=1e-2)
 
     # 3. Model Quality breakdown
     models = await get_models_stats(test_db)

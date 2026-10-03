@@ -33,7 +33,7 @@ async def readyz(response: Response) -> dict[str, str]:
     # Check Redis
     try:
         r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        pong = await r.ping()
+        pong = await r.ping()  # type: ignore[misc]
         await r.close()
         if pong:
             checks["redis"] = "ok"

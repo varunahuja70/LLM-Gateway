@@ -60,7 +60,7 @@ async def _check_and_increment_rate_limit(
             if count == 1:
                 await r.expire(key, window_seconds)
             await r.close()
-            return count <= max_attempts
+            return bool(count <= max_attempts)
         except Exception:
             pass
 

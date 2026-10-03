@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,8 @@ from app.schemas.stats import (
     ProjectStatsResponse,
     TimeseriesBucket,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 def compute_percentile_cont(values: Sequence[float | int], p: float) -> float | None:
@@ -54,6 +57,61 @@ async def get_overview_stats(
     from_time: datetime | None = None,
     to_time: datetime | None = None,
 ) -> OverviewStats:
+    dialect = session.get_bind().dialect.name
+
+    if dialect == "postgresql":
+        stmt = select(
+            func.count(RequestLog.id).label("total_requests"),
+            func.coalesce(func.sum(RequestLog.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(RequestLog.output_tokens), 0).label("output_tokens"),
+            func.coalesce(func.sum(RequestLog.cached_input_tokens), 0).label("cached_input_tokens"),
+            func.coalesce(func.sum(RequestLog.cost_micro_usd), 0).label("total_cost_micro_usd"),
+            func.coalesce(func.sum(RequestLog.saved_micro_usd), 0).label("saved_micro_usd"),
+            func.count(case((RequestLog.status == "error", 1))).label("error_count"),
+            func.count(case((RequestLog.fallback_used.is_(True), 1))).label("fallback_count"),
+            func.count(case((RequestLog.cache_hit.is_(True), 1))).label("cache_hit_count"),
+            func.coalesce(func.avg(RequestLog.latency_ms), 0.0).label("avg_latency_ms"),
+            func.percentile_cont(0.95)
+            .within_group(RequestLog.latency_ms.asc())
+            .label("p95_latency_ms"),
+        )
+        stmt = _apply_filters(stmt, project_id, from_time, to_time)
+        result = await session.execute(stmt)
+        row = result.one()
+
+        total_requests = int(row.total_requests or 0)
+        if total_requests == 0:
+            return OverviewStats()
+
+        input_tokens = int(row.input_tokens or 0)
+        output_tokens = int(row.output_tokens or 0)
+        cached_input_tokens = int(row.cached_input_tokens or 0)
+        total_cost_micro_usd = int(row.total_cost_micro_usd or 0)
+        saved_micro_usd = int(row.saved_micro_usd or 0)
+        error_count = int(row.error_count or 0)
+        fallback_count = int(row.fallback_count or 0)
+        cache_hit_count = int(row.cache_hit_count or 0)
+        avg_latency_ms = round(float(row.avg_latency_ms or 0.0), 2)
+        p95_latency_ms = (
+            round(float(row.p95_latency_ms), 2) if row.p95_latency_ms is not None else None
+        )
+
+        return OverviewStats(
+            total_requests=total_requests,
+            total_tokens=input_tokens + output_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_input_tokens=cached_input_tokens,
+            total_cost_micro_usd=total_cost_micro_usd,
+            saved_micro_usd=saved_micro_usd,
+            error_rate=round(error_count / total_requests, 4),
+            fallback_rate=round(fallback_count / total_requests, 4),
+            avg_latency_ms=avg_latency_ms,
+            p95_latency_ms=p95_latency_ms,
+            cache_hit_rate=round(cache_hit_count / total_requests, 4),
+        )
+
+    # SQLite / Generic dialect
     stmt = select(
         func.count(RequestLog.id).label("total_requests"),
         func.coalesce(func.sum(RequestLog.input_tokens), 0).label("input_tokens"),
@@ -84,6 +142,13 @@ async def get_overview_stats(
     cache_hit_count = int(row.cache_hit_count or 0)
     avg_latency_ms = round(float(row.avg_latency_ms or 0.0), 2)
 
+    lat_stmt = select(RequestLog.latency_ms)
+    lat_stmt = _apply_filters(lat_stmt, project_id, from_time, to_time)
+    lat_res = await session.execute(lat_stmt)
+    latencies = [val for (val,) in lat_res.all() if val is not None]
+    calc_p95 = compute_percentile_cont(latencies, 0.95)
+    p95_latency_ms = round(calc_p95, 2) if calc_p95 is not None else None
+
     return OverviewStats(
         total_requests=total_requests,
         total_tokens=input_tokens + output_tokens,
@@ -95,6 +160,7 @@ async def get_overview_stats(
         error_rate=round(error_count / total_requests, 4),
         fallback_rate=round(fallback_count / total_requests, 4),
         avg_latency_ms=avg_latency_ms,
+        p95_latency_ms=p95_latency_ms,
         cache_hit_rate=round(cache_hit_count / total_requests, 4),
     )
 
@@ -425,8 +491,8 @@ async def get_project_stats(
             m_val = await redis_client.get(f"budget:{project_id}:monthly:{month_str}")
             if m_val is not None:
                 monthly_spend = int(m_val)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("redis_budget_lookup_failed", project_id=str(project_id), error=str(exc))
 
     # If redis had no values, calculate from DB for current period
     if daily_spend == 0 or monthly_spend == 0:

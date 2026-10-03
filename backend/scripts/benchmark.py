@@ -98,6 +98,7 @@ async def setup_benchmark_app() -> tuple[AsyncClient, str]:
 
     # Point session makers to the in-memory SQLite session_factory
     import app.db.session as db_session_module
+
     db_session_module._sessionmaker = session_factory
     request_logger._sessionmaker = session_factory
 

@@ -78,6 +78,28 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 
+[[tool.mypy.overrides]]
+module = [
+    "argon2.*",
+    "apscheduler.*",
+    "prometheus_client.*",
+    "tiktoken.*",
+    "respx.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+]
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = [
+    "scripts.*",
+]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-ra -q --asyncio-mode=auto"

@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 import httpx
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import desc, select
@@ -20,6 +21,7 @@ from app.deps import require_csrf, require_owner
 from app.services.webhook import compute_webhook_signature
 
 router = APIRouter(prefix="/admin", tags=["alerts"])
+logger = structlog.get_logger(__name__)
 
 
 class AlertResponse(BaseModel):
@@ -131,8 +133,12 @@ async def test_project_webhook(
                 associated_data=str(project.id).encode(),
             )
             headers["X-Gateway-Signature"] = compute_webhook_signature(payload_bytes, secret)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "webhook_secret_decryption_failed",
+                project_id=str(project.id),
+                error=str(exc),
+            )
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:

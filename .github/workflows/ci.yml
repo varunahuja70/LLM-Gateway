@@ -25,12 +25,11 @@ jobs:
           --health-retries 5
       redis:
         image: redis:8-alpine
-        env:
-          REDIS_PASSWORD: redispassword
         ports:
           - 6379:6379
+        command: redis-server --requirepass redispassword
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "redis-cli -a redispassword ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5

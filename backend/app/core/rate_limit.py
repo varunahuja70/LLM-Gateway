@@ -70,7 +70,7 @@ async def check_rate_limit(
                 socket_connect_timeout=0.1,
                 socket_timeout=0.1,
             )
-            res: Any = await r.eval(  # type: ignore[no-untyped-call]
+            res: Any = await r.eval(  # type: ignore[misc]
                 SLIDING_WINDOW_LUA, 1, key, now, window_seconds, limit_rpm
             )
             await r.close()

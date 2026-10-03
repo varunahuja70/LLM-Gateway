@@ -35,8 +35,8 @@ All contributors and participants agree to abide by the [Code of Conduct](CODE_O
 ### Step-by-Step Setup
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-org/llm-gateway.git
-cd llm-gateway
+git clone https://github.com/varunahuja70/LLM-Gateway.git
+cd LLM-Gateway
 
 # 2. Start database and cache services
 docker compose -f docker-compose.dev.yml up -d

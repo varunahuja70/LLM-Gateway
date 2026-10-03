@@ -218,6 +218,7 @@ async def test_provider_credential(
         )
 
     import httpx
+
     start = time.perf_counter()
 
     settings = get_settings()
@@ -246,22 +247,50 @@ async def test_provider_credential(
                 )
             latency = int((time.perf_counter() - start) * 1000)
             if resp.status_code == 200:
-                return ProviderTestResponse(status="ok", success=True, message="OpenAI connection successful. Key is valid.", latency_ms=latency)
+                return ProviderTestResponse(
+                    status="ok",
+                    success=True,
+                    message="OpenAI connection successful. Key is valid.",
+                    latency_ms=latency,
+                )
             else:
-                return ProviderTestResponse(status="error", success=False, message=f"OpenAI returned {resp.status_code}: {resp.text[:200]}", latency_ms=latency)
+                return ProviderTestResponse(
+                    status="error",
+                    success=False,
+                    message=f"OpenAI returned {resp.status_code}: {resp.text[:200]}",
+                    latency_ms=latency,
+                )
 
         elif record.provider == "anthropic":
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     "https://api.anthropic.com/v1/messages",
-                    headers={"x-api-key": raw_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                    json={"model": "claude-3-haiku-20240307", "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
+                    headers={
+                        "x-api-key": raw_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-3-haiku-20240307",
+                        "max_tokens": 1,
+                        "messages": [{"role": "user", "content": "hi"}],
+                    },
                 )
             latency = int((time.perf_counter() - start) * 1000)
             if resp.status_code in (200, 400):  # 400 means key valid but bad request params
-                return ProviderTestResponse(status="ok", success=True, message="Anthropic connection successful. Key is valid.", latency_ms=latency)
+                return ProviderTestResponse(
+                    status="ok",
+                    success=True,
+                    message="Anthropic connection successful. Key is valid.",
+                    latency_ms=latency,
+                )
             else:
-                return ProviderTestResponse(status="error", success=False, message=f"Anthropic returned {resp.status_code}: {resp.text[:200]}", latency_ms=latency)
+                return ProviderTestResponse(
+                    status="error",
+                    success=False,
+                    message=f"Anthropic returned {resp.status_code}: {resp.text[:200]}",
+                    latency_ms=latency,
+                )
 
         elif record.provider == "google":
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -270,10 +299,24 @@ async def test_provider_credential(
                 )
             latency = int((time.perf_counter() - start) * 1000)
             if resp.status_code == 200:
-                return ProviderTestResponse(status="ok", success=True, message="Google Gemini connection successful. Key is valid.", latency_ms=latency)
+                return ProviderTestResponse(
+                    status="ok",
+                    success=True,
+                    message="Google Gemini connection successful. Key is valid.",
+                    latency_ms=latency,
+                )
             else:
-                detail = resp.json().get("error", {}).get("message", resp.text[:200]) if resp.headers.get("content-type", "").startswith("application/json") else resp.text[:200]
-                return ProviderTestResponse(status="error", success=False, message=f"Google API error: {detail}", latency_ms=latency)
+                detail = (
+                    resp.json().get("error", {}).get("message", resp.text[:200])
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text[:200]
+                )
+                return ProviderTestResponse(
+                    status="error",
+                    success=False,
+                    message=f"Google API error: {detail}",
+                    latency_ms=latency,
+                )
 
         else:
             latency = int((time.perf_counter() - start) * 1000)
@@ -286,7 +329,14 @@ async def test_provider_credential(
 
     except httpx.TimeoutException:
         latency = int((time.perf_counter() - start) * 1000)
-        return ProviderTestResponse(status="error", success=False, message="Connection timed out after 10 seconds.", latency_ms=latency)
+        return ProviderTestResponse(
+            status="error",
+            success=False,
+            message="Connection timed out after 10 seconds.",
+            latency_ms=latency,
+        )
     except Exception as e:
         latency = int((time.perf_counter() - start) * 1000)
-        return ProviderTestResponse(status="error", success=False, message=f"Connection failed: {e}", latency_ms=latency)
+        return ProviderTestResponse(
+            status="error", success=False, message=f"Connection failed: {e}", latency_ms=latency
+        )

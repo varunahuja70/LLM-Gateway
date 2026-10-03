@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ProviderCredentialCreate(BaseModel):
@@ -30,25 +30,23 @@ class ProviderCredentialResponse(BaseModel):
     name: str
     base_url: str | None
     key_last4: str
-    key_suffix: str = ""   # alias for key_last4 used by frontend
+    key_suffix: str = ""  # alias for key_last4 used by frontend
     created_at: datetime
     disabled_at: datetime | None
     is_enabled: bool = True  # computed from disabled_at
 
-    @classmethod
-    def model_validate(cls, obj: object, **kwargs: object) -> "ProviderCredentialResponse":  # type: ignore[override]
-        instance = super().model_validate(obj, **kwargs)
-        # disabled_at being set means it is disabled
-        if hasattr(obj, "disabled_at"):
-            instance.is_enabled = obj.disabled_at is None  # type: ignore[union-attr]
-            instance.key_suffix = getattr(obj, "key_last4", "")
-        return instance
+    @model_validator(mode="after")
+    def _compute_fields(self) -> "ProviderCredentialResponse":
+        self.is_enabled = self.disabled_at is None
+        if not self.key_suffix:
+            self.key_suffix = self.key_last4
+        return self
 
 
 class ProviderTestResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str
-    success: bool = True   # True when status == "ok"
+    success: bool = True  # True when status == "ok"
     message: str
     latency_ms: int

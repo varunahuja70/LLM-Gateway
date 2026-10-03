@@ -175,8 +175,8 @@ export default function OverviewPage() {
           />
           <KpiCard
             title="p95 Latency"
-            value={formatLatency(overview?.avg_latency_ms ?? null)}
-            subtitle="Average latency"
+            value={formatLatency(overview?.p95_latency_ms ?? null)}
+            subtitle="95th percentile request latency"
             icon={<Clock className="h-4 w-4" />}
             loading={isLoading}
           />

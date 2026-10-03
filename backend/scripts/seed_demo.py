@@ -419,6 +419,8 @@ async def clear_demo(session: AsyncSession) -> dict[str, Any]:
         "projects_deleted": r_projects.rowcount,
         "logs_deleted": r_logs.rowcount,
         "alerts_deleted": r_alerts.rowcount,
+        "keys_deleted": r_keys.rowcount,
+        "configs_deleted": r_configs.rowcount,
     }
 
 

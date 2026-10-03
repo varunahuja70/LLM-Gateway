@@ -22,6 +22,7 @@ def setup_test_environment() -> None:
     os.environ["PUBLIC_URL"] = "http://localhost:3000"
 
     import app.config as config_module
+
     config_module._settings = None
 
 
@@ -69,11 +70,23 @@ async def test_security_test_7_cache_isolation_between_projects(
     async with session_factory() as session:
         p1 = Project(id=p1_id, name="Project 1", slug="project-1")
         c1 = ProjectConfig(project_id=p1_id, cache_enabled=True, cache_ttl_s=3600)
-        k1 = GatewayKey(id=uuid.uuid4(), project_id=p1_id, name="k1", key_hash=hash_key(raw_key1), prefix="lgw_p1_c")
+        k1 = GatewayKey(
+            id=uuid.uuid4(),
+            project_id=p1_id,
+            name="k1",
+            key_hash=hash_key(raw_key1),
+            prefix="lgw_p1_c",
+        )
 
         p2 = Project(id=p2_id, name="Project 2", slug="project-2")
         c2 = ProjectConfig(project_id=p2_id, cache_enabled=True, cache_ttl_s=3600)
-        k2 = GatewayKey(id=uuid.uuid4(), project_id=p2_id, name="k2", key_hash=hash_key(raw_key2), prefix="lgw_p2_c")
+        k2 = GatewayKey(
+            id=uuid.uuid4(),
+            project_id=p2_id,
+            name="k2",
+            key_hash=hash_key(raw_key2),
+            prefix="lgw_p2_c",
+        )
 
         session.add_all([p1, c1, k1, p2, c2, k2])
         await session.commit()
@@ -129,7 +142,13 @@ async def test_security_test_8_budget_block_and_header_case_insensitivity(
             daily_budget_micro_usd=100,
             block_at_limit=True,
         )
-        k = GatewayKey(id=uuid.uuid4(), project_id=p_id, name="k", key_hash=hash_key(raw_key), prefix="lgw_budg")
+        k = GatewayKey(
+            id=uuid.uuid4(),
+            project_id=p_id,
+            name="k",
+            key_hash=hash_key(raw_key),
+            prefix="lgw_budg",
+        )
         session.add_all([p, c, k])
         await session.commit()
 
@@ -168,7 +187,13 @@ async def test_security_test_9_request_size_limit_and_max_tokens(
     async with session_factory() as session:
         p = Project(id=p_id, name="Size Project", slug="size-project")
         c = ProjectConfig(project_id=p_id)
-        k = GatewayKey(id=uuid.uuid4(), project_id=p_id, name="k", key_hash=hash_key(raw_key), prefix="lgw_size")
+        k = GatewayKey(
+            id=uuid.uuid4(),
+            project_id=p_id,
+            name="k",
+            key_hash=hash_key(raw_key),
+            prefix="lgw_size",
+        )
         session.add_all([p, c, k])
         await session.commit()
 
@@ -199,7 +224,13 @@ async def test_security_test_10_admin_endpoints_require_session_gateway_keys_fai
 
     async with session_factory() as session:
         p = Project(id=p_id, name="Admin Probe", slug="admin-probe")
-        k = GatewayKey(id=uuid.uuid4(), project_id=p_id, name="k", key_hash=hash_key(raw_key), prefix="lgw_admi")
+        k = GatewayKey(
+            id=uuid.uuid4(),
+            project_id=p_id,
+            name="k",
+            key_hash=hash_key(raw_key),
+            prefix="lgw_admi",
+        )
         session.add_all([p, k])
         await session.commit()
 

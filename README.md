@@ -1,6 +1,6 @@
 # LLM Gateway + Cost and Quality Tracker
 
-[![CI](https://github.com/your-org/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/llm-gateway/actions)
+[![CI](https://github.com/varunahuja70/LLM-Gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/varunahuja70/LLM-Gateway/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](backend/pyproject.toml)
 [![Next.js 16](https://img.shields.io/badge/next.js-16.3-black.svg)](frontend/package.json)
@@ -45,7 +45,7 @@ flowchart LR
 - **Hard Budgets & Webhooks**: Configure daily and monthly budgets per project. Enforce hard blocking at limit (`429 Too Many Requests`) or trigger webhook alerts at configurable thresholds (e.g. 50%, 80%, 100%).
 - **Automated Fallbacks**: Seamless failover on provider rate limits (429), server errors (500, 502, 503, 504), context length exceeded, or model decommission.
 - **Exact-Match Response Caching**: Optional per-project Redis caching with customizable TTL and streaming replay.
-- **Latency & Quality Telemetry**: Captures round-trip duration, Time to First Token (TTFT), token counts, and thumbs-up/down quality feedback signals with optional prompt correction tags.
+- **Quality Telemetry & Feedback Signals**: Captures operational reliability signals rather than speculative semantic scoring—including round-trip duration, Time to First Token (TTFT), token counts, empty/truncated response detection, error classification, and thumbs-up/down quality feedback signals with optional prompt correction tags.
 - **Zero-Trust Security**:
   - Provider keys encrypted at rest using AES-256-GCM with associated authentication data (AAD).
   - Admin passwords hashed with Argon2id.
@@ -61,8 +61,8 @@ flowchart LR
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-org/llm-gateway.git
-   cd llm-gateway
+   git clone https://github.com/varunahuja70/LLM-Gateway.git
+   cd LLM-Gateway
    ```
 
 2. **Configure environment**:
@@ -159,15 +159,17 @@ All settings are configured via environment variables or `.env`:
 
 ---
 
-## Benchmarks & Performance
+## Benchmarks & Performance (Mock Provider)
 
-Measured against the zero-latency mock provider stack:
+Gateway proxy overhead measured under synthetic load using an in-memory zero-latency mock provider (reflecting gateway processing, authentication, routing, and logging overhead without external internet transit):
+- **Workload**: Mock-provider gateway overhead benchmark
 - **Throughput**: Sustained `68.0+ req/s` on single node
 - **Gateway p50 Overhead**: `26.86 ms`
 - **Gateway p95 Overhead**: **`41.71 ms`** (Under target `< 50 ms`)
 - **Error Rate**: `0.00%`
 
-See full benchmark methodology and breakdowns in [docs/benchmarks.md](docs/benchmarks.md).
+*Note: These benchmarks measure internal gateway overhead only, not third-party upstream model latency.*
+See detailed methodology, layer breakdown, and reproduction steps in [docs/benchmarks.md](docs/benchmarks.md).
 
 ---
 

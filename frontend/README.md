@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LLM Gateway — Dashboard Frontend
+
+The frontend is a modern, real-time analytics dashboard and administrative control panel for the LLM Gateway, built with **Next.js 15 (App Router)**, **React 19**, **TypeScript**, and **Tailwind CSS**.
+
+---
+
+## Features
+
+- **Executive & Analytics Overview**:
+  - Live KPIs: Total requests, aggregate spend (USD), p95 latency, error rates, and cache hit ratios.
+  - Timeseries charts: Spend over time, request volume, and model distribution.
+  - Latency breakdown: p50, p90, p95, and p99 percentiles across models.
+- **Request Log Explorer**:
+  - Filterable by project, model, status, and date range.
+  - Inspection drawer displaying headers, tokens, costs, TTFT, and payload hashes.
+- **Project & Key Management**:
+  - Create and manage projects.
+  - Issue and revoke scoped gateway API keys.
+- **Provider Key Vault**:
+  - Configure provider credentials (OpenAI, Anthropic, Google Gemini) securely encrypted at rest.
+- **Budgeting & Alerts**:
+  - Daily and monthly spend thresholds.
+  - Webhook alert endpoints with live test delivery and HMAC verification.
+- **Demo Mode**:
+  - Built-in mock data mode configurable via settings to demonstrate full functionality without requiring live production traffic.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **UI Library**: React 19, Tailwind CSS, Lucide React
+- **Language**: TypeScript (strict mode)
+- **Package Manager**: `pnpm`
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### 1. Prerequisites
+- Node.js 20+
+- `pnpm` (version 9+)
+
+### 2. Environment Configuration
+
+Create `.env.local` if custom backend host is needed:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Install Dependencies
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 4. Run Development Server
 
-## Learn More
+```bash
+pnpm dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Quality Checks & Building
 
-## Deploy on Vercel
+```bash
+# Type check TypeScript
+pnpm type-check
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Lint check
+pnpm lint
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Production build
+pnpm build
+```
